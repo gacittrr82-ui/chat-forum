@@ -4,22 +4,29 @@
   padding: 0;
 }
 
+@property --a {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
 :root {
-  --rail: rgba(30, 31, 34, 0.92);
-  --rail-hover: #35373c;
-  --channels: rgba(43, 45, 49, 0.88);
-  --channels-hover: #35373c;
-  --pane: rgba(49, 51, 56, 0.88);
-  --input-bg: #383a40;
-  --members: rgba(43, 45, 49, 0.88);
-  --border: #1f2022;
-  --text: #dbdee1;
-  --muted: #949ba4;
+  --rail: rgba(17, 18, 22, 0.7);
+  --channels: rgba(22, 24, 30, 0.72);
+  --pane: rgba(28, 30, 37, 0.72);
+  --members: rgba(22, 24, 30, 0.72);
+  --channels-hover: rgba(255, 255, 255, 0.06);
+  --input-bg: rgba(0, 0, 0, 0.35);
+  --text: #e8eaf2;
+  --muted: #9aa1b4;
   --blurple: #5865f2;
   --green: #23a55a;
   --red: #f23f43;
-  --yellow: #f0b232;
   --pink: #ec4899;
+  --gold: #f0b232;
+  --cyan: #22d3ee;
+  --panel-edge: rgba(255, 255, 255, 0.07);
+  --mic-level: 0.12;
 }
 
 html,
@@ -29,7 +36,7 @@ body {
 
 body {
   font-family: "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
-  background: var(--pane);
+  background: #0b0c10;
   color: var(--text);
   overflow: hidden;
 }
@@ -38,7 +45,7 @@ body {
   display: none !important;
 }
 
-/* ---------- Background FX (blob animasi) ---------- */
+/* ================= Background aurora + grain ================= */
 
 .bg-fx {
   position: fixed;
@@ -46,46 +53,104 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background: #111114;
-}
-
-.bg-fx::before,
-.bg-fx::after {
-  content: "";
-  position: absolute;
-  width: 70vmax;
-  height: 70vmax;
-  border-radius: 50%;
-  filter: blur(70px);
-  opacity: 0.16;
-  will-change: transform;
+  background: linear-gradient(160deg, #0b0c14 0%, #0f1020 45%, #120b1f 100%);
 }
 
 .bg-fx::before {
-  background: radial-gradient(circle, var(--blurple) 0%, transparent 62%);
-  top: -25vmax;
-  left: -15vmax;
-  animation: blob1 22s ease-in-out infinite;
+  content: "";
+  position: absolute;
+  inset: -15%;
+  background:
+    radial-gradient(42% 38% at 18% 22%, rgba(88, 101, 242, 0.5), transparent 65%),
+    radial-gradient(38% 34% at 82% 18%, rgba(34, 211, 238, 0.32), transparent 65%),
+    radial-gradient(46% 42% at 72% 82%, rgba(236, 72, 153, 0.42), transparent 65%),
+    radial-gradient(34% 32% at 22% 78%, rgba(240, 178, 50, 0.28), transparent 65%);
+  filter: blur(46px);
+  animation: aurora 24s ease-in-out infinite alternate;
 }
 
 .bg-fx::after {
-  background: radial-gradient(circle, var(--pink) 0%, transparent 62%);
-  bottom: -25vmax;
-  right: -15vmax;
-  animation: blob2 26s ease-in-out infinite;
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  opacity: 0.035;
 }
 
-@keyframes blob1 {
-  0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
-  50% { transform: translate(10vmax, 7vmax) scale(1.18) rotate(30deg); }
+@keyframes aurora {
+  0% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  50% { transform: translate(-3%, 4%) rotate(8deg) scale(1.08); }
+  100% { transform: translate(3%, -4%) rotate(-8deg) scale(1.05); }
 }
 
-@keyframes blob2 {
-  0%, 100% { transform: translate(0, 0) scale(1) rotate(0deg); }
-  50% { transform: translate(-10vmax, -7vmax) scale(1.22) rotate(-25deg); }
+/* Partikel mengambang */
+#particles i {
+  position: absolute;
+  bottom: -20px;
+  border-radius: 50%;
+  filter: blur(1px);
+  animation: rise linear infinite;
 }
 
-/* ---------- Loading ---------- */
+@keyframes rise {
+  0% { transform: translateY(0) translateX(0); opacity: 0; }
+  8% { opacity: 0.35; }
+  90% { opacity: 0.25; }
+  100% { transform: translateY(-110vh) translateX(40px); opacity: 0; }
+}
+
+/* Cursor glow */
+#cursor-fx {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(88, 101, 242, 0.16), rgba(236, 72, 153, 0.08) 45%, transparent 70%);
+  z-index: 40;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  transition: opacity 0.2s;
+}
+
+#cursor-fx.hot {
+  background: radial-gradient(circle, rgba(88, 101, 242, 0.28), rgba(236, 72, 153, 0.14) 45%, transparent 70%);
+}
+
+@media (hover: none) {
+  #cursor-fx {
+    display: none;
+  }
+}
+
+/* ================= Border gradient berputar ================= */
+
+.glow-border {
+  position: relative;
+}
+
+.glow-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1.2px;
+  background: conic-gradient(from var(--a),
+    var(--blurple), var(--cyan), var(--gold), var(--pink), var(--blurple));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: spinA 5s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes spinA {
+  to { --a: 360deg; }
+}
+
+/* ================= Loading ================= */
 
 .loading {
   position: fixed;
@@ -93,7 +158,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #111114;
+  background: #0b0c10;
   z-index: 99;
 }
 
@@ -122,7 +187,7 @@ body {
   background: conic-gradient(from 0deg, transparent, var(--blurple), transparent, var(--pink), transparent);
   animation: spin 3s linear infinite;
   filter: blur(14px);
-  opacity: 0.7;
+  opacity: 0.75;
 }
 
 .loading-inner .brand-name {
@@ -130,7 +195,7 @@ body {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: 5px;
-  background: linear-gradient(90deg, var(--blurple), var(--pink), var(--yellow), var(--blurple));
+  background: linear-gradient(90deg, var(--blurple), var(--cyan), var(--pink), var(--gold), var(--blurple));
   background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -157,7 +222,7 @@ body {
   to { background-position: 300% 0; }
 }
 
-/* ---------- Layout Discord ---------- */
+/* ================= Layout ================= */
 
 #app {
   height: 100vh;
@@ -170,19 +235,35 @@ body {
   display: flex;
 }
 
-/* ====== Rail ====== */
+/* Entrance berjenjang */
+.layout > * {
+  opacity: 0;
+  animation: riseIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.rail { animation-delay: 0.05s; }
+.channels { animation-delay: 0.12s; }
+.pane { animation-delay: 0.2s; }
+.members-panel { animation-delay: 0.28s; }
+
+@keyframes riseIn {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ================= Rail ================= */
 
 .rail {
   width: 72px;
   background: var(--rail);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(22px) saturate(150%);
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 12px 0;
   gap: 8px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  border-right: 1px solid var(--panel-edge);
 }
 
 .rail-brand {
@@ -206,7 +287,7 @@ body {
 
 @keyframes brandPulse {
   0%, 100% { box-shadow: 0 0 14px rgba(88, 101, 242, 0.5); }
-  50% { box-shadow: 0 0 26px rgba(236, 72, 153, 0.7); }
+  50% { box-shadow: 0 0 28px rgba(236, 72, 153, 0.75); }
 }
 
 .rail-modules {
@@ -220,12 +301,13 @@ body {
   height: 48px;
   border: none;
   border-radius: 50%;
-  background: var(--channels-hover);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--muted);
   font-size: 22px;
   cursor: pointer;
   position: relative;
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -236,14 +318,14 @@ body {
   color: #fff;
   border-radius: 30%;
   transform: translateY(-2px) scale(1.06);
-  box-shadow: 0 6px 18px rgba(88, 101, 242, 0.45);
+  box-shadow: 0 6px 20px rgba(88, 101, 242, 0.45);
 }
 
 .rail-btn.active {
   background: linear-gradient(135deg, var(--blurple), var(--pink));
   color: #fff;
   border-radius: 30%;
-  box-shadow: 0 0 16px rgba(236, 72, 153, 0.5);
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.55);
 }
 
 .rail-btn.active::before {
@@ -254,7 +336,7 @@ body {
   height: 26px;
   background: #fff;
   border-radius: 5px;
-  animation: pillIn 0.25s ease;
+  animation: pillIn 0.3s ease;
 }
 
 @keyframes pillIn {
@@ -267,7 +349,7 @@ body {
   left: 58px;
   top: 50%;
   transform: translateY(-50%) scale(0.9);
-  background: #111;
+  background: rgba(0, 0, 0, 0.85);
   color: #fff;
   font-size: 12px;
   padding: 5px 10px;
@@ -285,32 +367,30 @@ body {
   transform: translateY(-50%) scale(1);
 }
 
-/* ====== Kolom channel ====== */
+/* ================= Kolom channel ================= */
 
 .channels {
   width: 240px;
   background: var(--channels);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(22px) saturate(150%);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   min-width: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  border-right: 1px solid var(--panel-edge);
 }
 
 .channels-header {
   padding: 18px 16px 10px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
 }
 
 .channels-header h2 {
   font-size: 15px;
   font-weight: 800;
-  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  background: linear-gradient(90deg, #fff, #c9cdf0);
+  background: linear-gradient(90deg, #fff, #b9c2ff);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -322,22 +402,28 @@ body {
   padding: 8px;
 }
 
-.channel-section .channel {
+.channel {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 7px 8px;
-  border-radius: 4px;
+  border-radius: 8px;
   color: var(--muted);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.2s, color 0.2s;
   position: relative;
+  overflow: hidden;
+}
+
+.channel:hover {
+  background: var(--channels-hover);
+  color: var(--text);
 }
 
 .channel.active {
-  background: var(--channels-hover);
+  background: rgba(88, 101, 242, 0.18);
   color: #fff;
 }
 
@@ -359,18 +445,19 @@ body {
   color: var(--text);
 }
 
-/* ----- Voice channel (ala Discord) ----- */
+/* ----- Voice channel ----- */
 
 .voice-channel-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 8px;
-  border-radius: 4px;
+  padding: 8px;
+  border-radius: 10px;
   color: var(--muted);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+  overflow: hidden;
   transition: all 0.2s;
 }
 
@@ -381,8 +468,8 @@ body {
 
 .voice-channel-row.joined {
   color: #fff;
-  background: rgba(35, 165, 90, 0.15);
-  border: 1px solid rgba(35, 165, 90, 0.4);
+  background: rgba(35, 165, 90, 0.16);
+  box-shadow: 0 0 16px rgba(35, 165, 90, 0.25);
 }
 
 .vc-icon {
@@ -401,14 +488,20 @@ body {
   border-radius: 999px;
   padding: 2px 8px;
   font-weight: 700;
-  animation: pop 0.25s ease;
+  animation: popIn 0.25s ease;
+  box-shadow: 0 0 10px rgba(35, 165, 90, 0.6);
+}
+
+@keyframes popIn {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .voice-users {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 0 8px;
+  padding: 6px 0 8px;
 }
 
 .voice-user {
@@ -416,7 +509,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 15px;
   color: var(--text);
   transition: background 0.15s;
@@ -450,6 +543,7 @@ body {
   background: var(--green);
   border-radius: 2px;
   animation: eq 0.9s ease-in-out infinite;
+  box-shadow: 0 0 6px rgba(35, 165, 90, 0.8);
 }
 
 .vu-eq i:nth-child(2) { animation-delay: 0.15s; }
@@ -464,7 +558,7 @@ body {
   color: var(--muted);
   padding: 6px 8px;
   line-height: 1.4;
-  animation: pop 0.3s ease;
+  animation: popIn 0.3s ease;
 }
 
 /* Avatar */
@@ -483,16 +577,16 @@ body {
 }
 
 .speaking-ring {
-  box-shadow: 0 0 0 3px var(--green), 0 0 14px rgba(35, 165, 90, 0.7);
-  animation: speakPulse 1s ease-in-out infinite;
+  box-shadow: 0 0 0 3px var(--green), 0 0 16px rgba(35, 165, 90, 0.8);
+  animation: speakPulse 0.9s ease-in-out infinite;
 }
 
 @keyframes speakPulse {
-  0%, 100% { box-shadow: 0 0 0 3px rgba(35, 165, 90, 0.6), 0 0 8px rgba(35, 165, 90, 0.4); }
-  50% { box-shadow: 0 0 0 4px rgba(35, 165, 90, 1), 0 0 18px rgba(35, 165, 90, 0.9); }
+  0%, 100% { box-shadow: 0 0 0 3px rgba(35, 165, 90, 0.55), 0 0 8px rgba(35, 165, 90, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(35, 165, 90, 1), 0 0 22px rgba(35, 165, 90, 1); }
 }
 
-/* ====== Footer channel (user chip ala Discord) ====== */
+/* ================= Footer channel ================= */
 
 .channels-footer {
   padding: 8px;
@@ -503,13 +597,14 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px;
-  border-radius: 8px;
-  background: rgba(30, 31, 34, 0.6);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
   transition: background 0.2s;
 }
 
 .user-chip:hover {
-  background: rgba(30, 31, 34, 0.9);
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .user-meta {
@@ -539,7 +634,7 @@ body {
   height: 9px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 6px rgba(35, 165, 90, 0.8);
+  box-shadow: 0 0 8px rgba(35, 165, 90, 0.9);
 }
 
 .user-actions {
@@ -556,6 +651,8 @@ body {
   color: var(--muted);
   font-size: 15px;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -565,31 +662,31 @@ body {
 .act-btn:hover {
   background: var(--channels-hover);
   color: #fff;
-  transform: scale(1.1);
+  transform: scale(1.12);
 }
 
 .act-btn.on {
   background: var(--green);
   color: #fff;
-  box-shadow: 0 0 10px rgba(35, 165, 90, 0.5);
+  box-shadow: 0 0 12px rgba(35, 165, 90, 0.6);
 }
 
 .act-btn.muted {
   background: var(--red);
   color: #fff;
-  box-shadow: 0 0 10px rgba(242, 63, 67, 0.5);
+  box-shadow: 0 0 12px rgba(242, 63, 67, 0.6);
 }
 
 .act-btn:active {
   transform: scale(0.92);
 }
 
-/* ====== Pane utama ====== */
+/* ================= Pane ================= */
 
 .pane {
   flex: 1;
   background: var(--pane);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(22px) saturate(150%);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -598,7 +695,7 @@ body {
 
 .pane-header {
   padding: 14px 16px;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--panel-edge);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -609,7 +706,7 @@ body {
   font-size: 16px;
   font-weight: 700;
   color: #fff;
-  animation: slideDown 0.25s ease;
+  animation: slideDown 0.3s ease;
 }
 
 .pane-desc {
@@ -623,13 +720,14 @@ body {
   gap: 6px;
   font-size: 12px;
   color: var(--muted);
-  background: rgba(30, 31, 34, 0.6);
+  background: rgba(0, 0, 0, 0.3);
   padding: 5px 12px;
   border-radius: 999px;
+  border: 1px solid var(--panel-edge);
 }
 
 @keyframes slideDown {
-  from { transform: translateY(-6px); opacity: 0; }
+  from { transform: translateY(-8px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
@@ -638,26 +736,26 @@ body {
 .voice-join-banner {
   margin: 10px 16px 0;
   padding: 10px 14px;
-  border-radius: 8px;
-  background: rgba(240, 178, 50, 0.12);
+  border-radius: 10px;
+  background: rgba(240, 178, 50, 0.1);
   border: 1px solid rgba(240, 178, 50, 0.4);
   color: var(--text);
   font-size: 13px;
   display: flex;
   align-items: center;
   gap: 10px;
-  animation: pop 0.3s ease;
+  animation: popIn 0.3s ease;
 }
 
 .voice-join-banner b {
-  color: var(--yellow);
+  color: var(--gold);
 }
 
 .banner-pulse {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--yellow);
+  background: var(--gold);
   animation: blinkDot 1s ease-in-out infinite;
   flex-shrink: 0;
 }
@@ -671,7 +769,7 @@ body {
 
 .voice-stage {
   padding: 12px 16px 4px;
-  animation: slideDown 0.3s ease;
+  animation: slideDown 0.35s ease;
 }
 
 .voice-banner {
@@ -680,14 +778,14 @@ body {
   align-items: center;
   gap: 6px;
   padding: 18px;
-  border-radius: 10px;
+  border-radius: 14px;
   background: rgba(35, 165, 90, 0.08);
-  border: 1px solid rgba(35, 165, 90, 0.35);
 }
 
 .voice-banner h2 {
   font-size: 15px;
   color: var(--green);
+  text-shadow: 0 0 14px rgba(35, 165, 90, 0.5);
 }
 
 .voice-banner p {
@@ -699,28 +797,39 @@ body {
   display: flex;
   align-items: flex-end;
   gap: 4px;
-  height: 24px;
+  height: 28px;
 }
 
 .voice-equalizer span {
   width: 5px;
-  height: 10px;
+  height: 14px;
   border-radius: 3px;
   background: var(--green);
   animation: eq 1s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(35, 165, 90, 0.7);
 }
 
 .voice-equalizer span:nth-child(2) { animation-delay: 0.12s; }
 .voice-equalizer span:nth-child(3) { animation-delay: 0.24s; }
 .voice-equalizer span:nth-child(4) { animation-delay: 0.36s; }
 .voice-equalizer span:nth-child(5) { animation-delay: 0.48s; }
+.voice-equalizer span:nth-child(6) { animation-delay: 0.6s; }
+.voice-equalizer span:nth-child(7) { animation-delay: 0.72s; }
+.voice-equalizer span:nth-child(8) { animation-delay: 0.84s; }
+
+/* Equalizer live (ikut volume mic) */
+.voice-equalizer.live span {
+  animation: none;
+  transform: scaleY(calc(0.15 + var(--mic-level)));
+  transition: transform 60ms linear;
+}
 
 @keyframes eq {
   0%, 100% { transform: scaleY(0.3); }
   50% { transform: scaleY(1); }
 }
 
-/* ---------- Messages (ala Discord) ---------- */
+/* ================= Messages ================= */
 
 .messages {
   flex: 1;
@@ -731,25 +840,37 @@ body {
   gap: 2px;
 }
 
+.messages.fade {
+  animation: msgFade 0.35s ease;
+}
+
+@keyframes msgFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .msg {
   display: flex;
   gap: 12px;
   padding: 6px 8px;
-  border-radius: 6px;
-  animation: msgIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border-radius: 8px;
+  animation: msgIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .msg:hover {
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.15);
 }
 
 @keyframes msgIn {
-  from { transform: translateY(10px) scale(0.98); opacity: 0; }
+  from { transform: translateY(12px) scale(0.98); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .msg-body {
   min-width: 0;
+  position: relative;
+  padding-left: 10px;
+  border-left: 2px solid var(--blurple);
 }
 
 .msg .meta {
@@ -782,7 +903,83 @@ body {
   color: var(--text);
 }
 
-/* ---------- Chat input ---------- */
+.msg.mine .msg-body {
+  border-left: 2px solid var(--pink);
+}
+
+.msg.mine .msg-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(236, 72, 153, 0.08), rgba(88, 101, 242, 0.08));
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+/* ----- Hero kosong ----- */
+
+.messages-empty {
+  text-align: center;
+  padding: 34px 20px 10px;
+  animation: riseIn 0.6s ease;
+}
+
+.messages-empty .empty-logo {
+  font-size: 44px;
+  animation: floaty 3s ease-in-out infinite;
+}
+
+.messages-empty h3 {
+  margin-top: 12px;
+  font-size: 17px;
+  background: linear-gradient(90deg, var(--blurple), var(--pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.messages-empty p {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ----- Typing indicator ----- */
+
+.typing-line {
+  padding: 4px 26px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: popIn 0.25s ease;
+}
+
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  height: 14px;
+}
+
+.typing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--blurple);
+  animation: typingB 1s ease-in-out infinite;
+}
+
+.typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes typingB {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ================= Chat input ================= */
 
 .chat-input {
   display: flex;
@@ -792,14 +989,14 @@ body {
 
 .chat-input input {
   flex: 1;
-  padding: 11px 14px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-edge);
   background: var(--input-bg);
   color: var(--text);
   font-size: 15px;
   outline: none;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
 }
 
 .chat-input input::placeholder {
@@ -808,13 +1005,16 @@ body {
 
 .chat-input input:focus {
   border-color: var(--blurple);
-  background: #3d4148;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 18px rgba(88, 101, 242, 0.25);
 }
 
 .btn-primary {
+  position: relative;
+  overflow: hidden;
   padding: 0 20px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: linear-gradient(135deg, var(--blurple), #6a5cf0);
   color: #fff;
   font-size: 14px;
@@ -822,20 +1022,36 @@ body {
   cursor: pointer;
   transition: all 0.2s;
   white-space: nowrap;
-  box-shadow: 0 2px 10px rgba(88, 101, 242, 0.35);
+  box-shadow: 0 2px 12px rgba(88, 101, 242, 0.35);
+}
+
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  transform: skewX(-20deg);
+  transition: left 0.5s ease;
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 5px 16px rgba(88, 101, 242, 0.55);
+  box-shadow: 0 6px 20px rgba(88, 101, 242, 0.55);
   filter: brightness(1.1);
 }
 
-.btn-primary:active {
-  transform: translateY(0) scale(0.98);
+.btn-primary:hover::after {
+  left: 120%;
 }
 
-/* ---------- Screen share ---------- */
+.btn-primary:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* ================= Screen share ================= */
 
 .screen-grid {
   display: flex;
@@ -851,10 +1067,11 @@ body {
   width: 300px;
   aspect-ratio: 16/9;
   background: #000;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
   animation: msgIn 0.3s ease;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--panel-edge);
 }
 
 .screen-tile video {
@@ -886,18 +1103,19 @@ body {
   padding: 2px 8px;
   border-radius: 999px;
   animation: blinkDot 1.4s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(242, 63, 67, 0.6);
 }
 
-/* ====== Panel member ====== */
+/* ================= Panel member ================= */
 
 .members-panel {
   width: 240px;
   background: var(--members);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(22px) saturate(150%);
   flex-shrink: 0;
   padding: 16px 8px 8px;
   overflow-y: auto;
-  border-left: 1px solid rgba(255, 255, 255, 0.04);
+  border-left: 1px solid var(--panel-edge);
 }
 
 .members-panel h3 {
@@ -919,11 +1137,11 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 15px;
   color: var(--text);
   cursor: default;
-  animation: slideDown 0.2s ease;
+  animation: slideDown 0.25s ease;
 }
 
 #member-list li:hover {
@@ -934,7 +1152,23 @@ body {
   background: rgba(35, 165, 90, 0.12);
 }
 
-/* ---------- Scrollbar ---------- */
+/* ================= Ripple ================= */
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  transform: scale(0);
+  animation: rippleIn 0.6s ease-out forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes rippleIn {
+  to { transform: scale(1); opacity: 0; }
+}
+
+/* ================= Scrollbar ================= */
 
 ::-webkit-scrollbar {
   width: 8px;
@@ -945,7 +1179,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 4px;
 }
 
@@ -953,7 +1187,7 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* ---------- Responsive ---------- */
+/* ================= Responsive ================= */
 
 @media (max-width: 900px) {
   .members-panel {

@@ -56,13 +56,14 @@
   // ---------- Pesan ----------
   function msgEl(m, animate) {
     const mine = me && m.username === me.name;
+    const color = avatarColor(m.user_id);
     const div = document.createElement("div");
     div.className = "msg" + (mine ? " mine" : "");
     if (!animate) div.style.animation = "none";
     div.innerHTML = `
-      <div class="avatar" style="background:${avatarColor(m.user_id)}">${escapeHtml(avatarText(m.username))}</div>
-      <div class="msg-body">
-        <div class="meta"><b style="color:${avatarColor(m.user_id)}">${escapeHtml(m.username)}</b><span class="time">${timeLabel(m.created_at)}</span></div>
+      <div class="avatar" style="background:${color}">${escapeHtml(avatarText(m.username))}</div>
+      <div class="msg-body" style="border-left-color:${color}">
+        <div class="meta"><b style="color:${color}">${escapeHtml(m.username)}</b><span class="time">${timeLabel(m.created_at)}</span></div>
         <div class="bubble">${escapeHtml(m.text)}</div>
       </div>`;
     return div;
@@ -79,6 +80,7 @@
       .then((data) => {
         if (!data) return;
         listEl.innerHTML = "";
+        $("#messages-empty").classList.toggle("hidden", data.messages.length > 0);
         for (const m of data.messages) listEl.appendChild(msgEl(m, false));
         scrollBottom(listEl);
       })
@@ -117,6 +119,11 @@
     $("#pane-title").textContent = isVoice ? "Voice" : "# " + info.channel;
     $("#pane-desc").textContent = info.desc;
     $("#chat-text").placeholder = `Ketik ke # ${info.channel}...`;
+
+    const msgs = $("#messages");
+    msgs.classList.remove("fade");
+    void msgs.offsetWidth;
+    msgs.classList.add("fade");
 
     if (isVoice) {
       updateVoiceUi();
@@ -339,12 +346,15 @@
     const data = new Uint8Array(analyser.frequencyBinCount);
     let was = false;
     let silentFor = 0;
+    const eq = $("#voice-eq");
     const loop = () => {
       if (!inVoice || !analyser) return;
       analyser.getByteFrequencyData(data);
       let sum = 0;
       for (let i = 0; i < data.length; i++) sum += data[i];
       const avg = sum / data.length;
+      const level = Math.min(1, avg / 55);
+      document.documentElement.style.setProperty("--mic-level", level.toFixed(3));
       let now = false;
       if (avg > 4) {
         now = true;
@@ -385,6 +395,7 @@
     }
     socket.emit("voice:join");
     socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
+    $("#voice-eq").classList.add("live");
     updateVoiceUi();
   }
 
@@ -392,6 +403,8 @@
     if (!inVoice) return;
     inVoice = false;
     socket.emit("voice:leave");
+    $("#voice-eq").classList.remove("live");
+    document.documentElement.style.setProperty("--mic-level", "0.12");
     if (speaking) {
       speaking = false;
       socket.emit("voice:speaking", { speaking: false });
@@ -487,14 +500,72 @@
 
   // ---------- Kirim pesan ----------
   function bindChatForm() {
+    const input = $("#chat-text");
+    let lastTyping = 0;
+    input.addEventListener("input", () => {
+      const now = Date.now();
+      if (now - lastTyping > 2000) {
+        lastTyping = now;
+        socket.emit("typing:start", { room: currentRoom() });
+      }
+    });
     $("#chat-form").addEventListener("submit", (e) => {
       e.preventDefault();
-      const input = $("#chat-text");
       const text = input.value.trim();
       if (!text || !socket) return;
       socket.emit("message:send", { room: currentRoom(), text });
       input.value = "";
       input.focus();
+    });
+  }
+
+  // ---------- Effects (partikel, cursor glow, ripple) ----------
+  function initEffects() {
+    // Partikel mengambang
+    const host = $("#particles");
+    for (let i = 0; i < 26; i++) {
+      const p = document.createElement("i");
+      p.className = "particle";
+      const size = 2 + Math.random() * 5;
+      p.style.cssText = `
+        left:${Math.random() * 100}%;
+        width:${size}px;height:${size}px;
+        opacity:${0.08 + Math.random() * 0.2};
+        animation-duration:${14 + Math.random() * 18}s;
+        animation-delay:${-Math.random() * 20}s;
+        background:${Math.random() > 0.5 ? "var(--blurple)" : "var(--pink)"};`;
+      host.appendChild(p);
+    }
+
+    // Cursor glow (skip di layar sentuh)
+    const hasFine = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (!hasFine) return;
+    const cursor = $("#cursor-fx");
+    let cx = innerWidth / 2, cy = innerHeight / 2;
+    let tx = cx, ty = cy;
+    addEventListener("mousemove", (e) => {
+      tx = e.clientX;
+      ty = e.clientY;
+      cursor.classList.toggle("hot", !!e.target.closest("button, .rail-btn, .act-btn, input, .voice-channel-row, .channel, #member-list li"));
+    });
+    (function follow() {
+      cx += (tx - cx) * 0.12;
+      cy += (ty - cy) * 0.12;
+      cursor.style.transform = `translate(${cx - 260}px, ${cy - 260}px)`;
+      requestAnimationFrame(follow);
+    })();
+
+    // Ripple di tombol
+    document.addEventListener("pointerdown", (e) => {
+      const el = e.target.closest("button, .voice-channel-row, .channel");
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const d = Math.max(rect.width, rect.height) * 2;
+      const span = document.createElement("span");
+      span.className = "ripple";
+      span.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - rect.left - d / 2}px;top:${e.clientY - rect.top - d / 2}px;`;
+      el.appendChild(span);
+      setTimeout(() => span.remove(), 650);
     });
   }
 
@@ -546,11 +617,23 @@
 
     socket.on("message:new", (m) => {
       if (m.room !== currentRoom()) return;
+      $("#messages-empty").classList.add("hidden");
       $("#messages").appendChild(msgEl(m, true));
       scrollBottom($("#messages"));
     });
 
     socket.on("room:joined", ({ room }) => loadHistory(room));
+
+    // Typing indicator
+    let typingHideTimer = null;
+    socket.on("typing", ({ name, room }) => {
+      if (room !== currentRoom()) return;
+      const line = $("#typing-line");
+      line.innerHTML = `<span class="typing-dots"><i></i><i></i><i></i></span>${escapeHtml(name)} lagi ngetik...`;
+      line.classList.remove("hidden");
+      clearTimeout(typingHideTimer);
+      typingHideTimer = setTimeout(() => line.classList.add("hidden"), 2500);
+    });
 
     // Voice events
     socket.on("voice:users", (list) => {
@@ -598,6 +681,7 @@
 
     bindChatForm();
     updateVoiceUi();
+    initEffects();
     setModule("chat");
 
     $("#loading").classList.add("hidden");

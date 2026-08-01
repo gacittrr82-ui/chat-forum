@@ -124,6 +124,12 @@ db.migrate().then(() => {
       }
     });
 
+    socket.on("typing:start", (data) => {
+      const room = String(data?.room || "general");
+      if (!VALID_ROOMS.has(room)) return;
+      socket.broadcast.to(room).emit("typing", { name: anon.name, room });
+    });
+
     // ---------- Voice (mic + share screen, tanpa kamera) ----------
 
     const voiceUsers = new Map(); // anonId -> { id, name, micOn, deafened }
