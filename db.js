@@ -1,21 +1,29 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const DATABASE_URL = process.env.DATABASE_URL || "";
-const DATA_FILE = path.join(__dirname, "data.json");
+const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data.json");
+const ALT_DATA_FILE = path.join(os.tmpdir(), "chat-forum-data.json");
 
 // ---------- Penyimpanan default: file JSON murni JS (tanpa modul native) ----------
 // Bisa dipakai di platform mana pun. Gunakan DATABASE_URL PostgreSQL bila perlu.
 
 let jsonDb = null;
 let pgPool = null;
+let dataFile = DATA_FILE;
 
 function loadJsonDb() {
   if (jsonDb) return jsonDb;
+  let pathToUse = DATA_FILE;
+  if (!fs.existsSync(pathToUse) && fs.existsSync(ALT_DATA_FILE)) {
+    pathToUse = ALT_DATA_FILE;
+  }
+  dataFile = pathToUse;
   let state = { users: [], sessions: [], messages: [], seq: { users: 0, messages: 0 } };
-  if (fs.existsSync(DATA_FILE)) {
+  if (fs.existsSync(pathToUse)) {
     try {
-      state = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+      state = JSON.parse(fs.readFileSync(pathToUse, "utf8"));
       if (!state.users || !state.sessions || !state.messages || !state.seq) {
         state = { users: [], sessions: [], messages: [], seq: { users: 0, messages: 0 } };
       }
@@ -29,9 +37,19 @@ function loadJsonDb() {
 
 function saveJsonDb() {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(jsonDb));
+    fs.writeFileSync(dataFile, JSON.stringify(jsonDb));
   } catch (err) {
-    console.error("Gagal menyimpan data:", err.message);
+    if (dataFile === DATA_FILE) {
+      dataFile = ALT_DATA_FILE;
+      console.warn("Tidak bisa menulis di direktori app, fallback ke:", dataFile);
+      try {
+        fs.writeFileSync(dataFile, JSON.stringify(jsonDb));
+      } catch (e2) {
+        console.error("Penyimpanan data tidak tersedia:", e2.message);
+      }
+    } else {
+      console.error("Penyimpanan data tidak tersedia:", err.message);
+    }
   }
 }
 
@@ -207,4 +225,10 @@ const q = {
   },
 };
 
-module.exports = { init, migrate, q, isPostgres: Boolean(DATABASE_URL) };
+module.exports = {
+  init,
+  migrate,
+  isPostgres: Boolean(DATABASE_URL),
+  ...q,
+  q,
+};
