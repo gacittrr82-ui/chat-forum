@@ -7,23 +7,29 @@
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
+  <div class="bg-fx" aria-hidden="true"></div>
+
   <div id="loading" class="loading">
     <div class="loading-inner">
-      <div class="brand-logo">🕶️</div>
-      <p>Menghubungi Hidden Society...</p>
+      <div class="loading-brand">
+        <div class="brand-logo">🕶️</div>
+        <div class="brand-halo"></div>
+      </div>
+      <p class="brand-name">HIDDEN SOCIETY</p>
+      <p class="loading-sub">Menghubungi Hidden Society...</p>
     </div>
   </div>
 
   <div id="app" class="hidden">
     <div class="layout">
 
-      <!-- ======== Rail (seperti server list Discord) ======== -->
+      <!-- ======== Rail (server list ala Discord) ======== -->
       <nav class="rail">
         <div class="rail-brand">🕶️</div>
         <div class="rail-modules">
-          <button class="rail-btn" data-module="chat" title="Chat Forum">💬</button>
-          <button class="rail-btn" data-module="help" title="Help Forum">🆘</button>
-          <button class="rail-btn" data-module="voice" title="Voice">🎙️</button>
+          <button class="rail-btn" data-module="chat" title="Chat Forum">💬<span class="tip">Chat Forum</span></button>
+          <button class="rail-btn" data-module="help" title="Help Forum">🆘<span class="tip">Help Forum</span></button>
+          <button class="rail-btn" data-module="voice" title="Voice">🎙️<span class="tip">Voice</span></button>
         </div>
       </nav>
 
@@ -41,24 +47,30 @@
             </div>
           </div>
 
-          <!-- Panel voice (muncul saat modul Voice) -->
-          <div class="voice-connected hidden" id="voice-connected">
-            <div class="voice-connected-title">🔊 Voice Connected</div>
-            <div class="voice-users" id="voice-users"></div>
-            <div class="voice-controls">
-              <button id="mic-btn" class="vc-btn on" title="Mic">🎤</button>
-              <button id="deafen-btn" class="vc-btn" title="Deafen">🔇</button>
-              <button id="screen-btn" class="vc-btn" title="Share Screen">🖥️</button>
-              <button id="leave-voice-btn" class="vc-btn leave" title="Leave">📴</button>
+          <!-- Voice channel (ala Discord: klik buat join/leave) -->
+          <div class="channel-section hidden" id="voice-section">
+            <div class="channel-heading">Voice Channel</div>
+            <div class="voice-channel-row" id="voice-channel-item">
+              <span class="vc-icon">🔊</span>
+              <span class="vc-label">General Voice</span>
+              <span class="vc-status hidden" id="voice-connected-pill">Connected</span>
             </div>
+            <div class="voice-users" id="voice-users"></div>
           </div>
         </div>
 
         <div class="channels-footer">
-          <div class="user-chip" id="current-user">...</div>
-          <div class="conn-status">
-            <span id="conn-status">🔴</span>
-            <span id="online-count">0 online</span>
+          <div class="user-chip">
+            <div class="avatar" id="user-avatar">?</div>
+            <div class="user-meta">
+              <div class="user-name" id="user-name">...</div>
+              <div class="user-status"><span class="status-dot"></span><span id="conn-status">online</span></div>
+            </div>
+            <div class="user-actions">
+              <button class="act-btn" id="mic-btn" title="Mute">🎤</button>
+              <button class="act-btn" id="deafen-btn" title="Deafen">🎧</button>
+              <button class="act-btn" id="screen-btn" title="Share Screen">🖥️</button>
+            </div>
           </div>
         </div>
       </aside>
@@ -70,18 +82,38 @@
             <h2 id="pane-title"># general</h2>
             <span class="pane-desc" id="pane-desc">Chat Forum</span>
           </div>
+          <div class="online-pill"><span class="status-dot"></span><span id="online-count">0</span> online</div>
         </div>
-        <div id="screen-grid" class="screen-grid hidden"></div>
+
+        <!-- Banner: belum join voice -->
+        <div class="voice-join-banner hidden" id="voice-join-banner">
+          <span class="banner-pulse"></span>
+          Kamu belum join voice — klik <b>General Voice</b> di kolom kiri buat mulai ngobrol.
+        </div>
+
+        <!-- Stage voice (muncul pas connected) -->
+        <div class="voice-stage hidden" id="voice-stage">
+          <div class="voice-banner">
+            <div class="voice-equalizer" id="voice-eq">
+              <span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <h2 id="voice-stage-title">Voice Connected</h2>
+            <p id="voice-stage-desc">Kamu nyambung di General Voice — ngomong aja!</p>
+          </div>
+          <div id="screen-grid" class="screen-grid hidden"></div>
+        </div>
+
         <div id="messages" class="messages"></div>
+
         <form id="chat-form" class="chat-input" autocomplete="off">
-          <input type="text" id="chat-text" placeholder="Ketik pesan ke # general..." maxlength="2000" />
+          <input type="text" id="chat-text" placeholder="Ketik ke # general..." maxlength="2000" />
           <button type="submit" class="btn-primary">Kirim</button>
         </form>
       </main>
 
-      <!-- ======== Panel member (seperti Discord) ======== -->
+      <!-- ======== Panel member (ala Discord) ======== -->
       <aside class="members-panel">
-        <h3>ONLINE — <span id="member-count">0</span></h3>
+        <h3>Online — <span id="member-count">0</span></h3>
         <ul id="member-list"></ul>
       </aside>
 

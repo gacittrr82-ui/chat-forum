@@ -155,6 +155,12 @@ db.migrate().then(() => {
       }
     });
 
+    socket.on("voice:speaking", (data) => {
+      if (voiceUsers.has(anon.id)) {
+        io.emit("voice:speaking", { id: anon.id, speaking: data?.speaking === true });
+      }
+    });
+
     socket.on("voice:offer", (data) => {
       if (data?.target && data?.sdp) {
         io.to(data.target).emit("voice:offer", { from: socket.id, sdp: data.sdp });
