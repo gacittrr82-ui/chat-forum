@@ -15,83 +15,76 @@
   </div>
 
   <div id="app" class="hidden">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-logo">🕶️</div>
-        <div class="brand-text">
-          <span class="brand-name">HIDDEN SOCIETY</span>
-          <span class="brand-sub">Forums</span>
-        </div>
-      </div>
-      <div class="topbar-right">
-        <span id="conn-status" class="badge">🔴 offline</span>
-        <span id="online-count" class="badge">🟢 <b>0</b> online</span>
-        <span id="current-user" class="user-chip">...</span>
-      </div>
-    </header>
-
     <div class="layout">
-      <aside class="sidebar">
-        <nav class="modules">
-          <h3>Modul</h3>
-          <button class="module-btn active" data-module="chat">💬 Chat Forum</button>
-          <button class="module-btn" data-module="help">🆘 Help Forum</button>
-          <button class="module-btn" data-module="voice">🎙️ Voice</button>
-        </nav>
 
-        <div class="members">
-          <h3>Online <span id="member-count" class="count-pill">0</span></h3>
-          <ul id="member-list"></ul>
+      <!-- ======== Rail (seperti server list Discord) ======== -->
+      <nav class="rail">
+        <div class="rail-brand">🕶️</div>
+        <div class="rail-modules">
+          <button class="rail-btn" data-module="chat" title="Chat Forum">💬</button>
+          <button class="rail-btn" data-module="help" title="Help Forum">🆘</button>
+          <button class="rail-btn" data-module="voice" title="Voice">🎙️</button>
+        </div>
+      </nav>
+
+      <!-- ======== Kolom channel ======== -->
+      <aside class="channels">
+        <div class="channels-header">
+          <h2 id="channels-title">Chat Forum</h2>
+        </div>
+
+        <div class="channels-body">
+          <div class="channel-section" id="channel-section">
+            <div class="channel active" id="main-channel">
+              <span class="channel-hash">#</span>
+              <span id="channel-name">general</span>
+            </div>
+          </div>
+
+          <!-- Panel voice (muncul saat modul Voice) -->
+          <div class="voice-connected hidden" id="voice-connected">
+            <div class="voice-connected-title">🔊 Voice Connected</div>
+            <div class="voice-users" id="voice-users"></div>
+            <div class="voice-controls">
+              <button id="mic-btn" class="vc-btn on" title="Mic">🎤</button>
+              <button id="deafen-btn" class="vc-btn" title="Deafen">🔇</button>
+              <button id="screen-btn" class="vc-btn" title="Share Screen">🖥️</button>
+              <button id="leave-voice-btn" class="vc-btn leave" title="Leave">📴</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="channels-footer">
+          <div class="user-chip" id="current-user">...</div>
+          <div class="conn-status">
+            <span id="conn-status">🔴</span>
+            <span id="online-count">0 online</span>
+          </div>
         </div>
       </aside>
 
+      <!-- ======== Pane utama ======== -->
       <main class="pane">
-        <!-- ======== Chat Forum ======== -->
-        <section id="module-chat" class="module">
-          <div class="module-header">
-            <h2>💬 Chat Forum</h2>
-            <div class="room-tabs" id="chat-room-tabs"></div>
+        <div class="pane-header">
+          <div>
+            <h2 id="pane-title"># general</h2>
+            <span class="pane-desc" id="pane-desc">Chat Forum</span>
           </div>
-          <div id="chat-messages" class="messages"></div>
-          <form id="chat-form" class="chat-input" autocomplete="off">
-            <input type="text" id="chat-text" placeholder="Ketik pesan, lalu Enter..." maxlength="2000" />
-            <button type="submit" class="btn-primary">Kirim</button>
-          </form>
-        </section>
-
-        <!-- ======== Help Forum ======== -->
-        <section id="module-help" class="module hidden">
-          <div class="module-header">
-            <h2>🆘 Help Forum</h2>
-            <span class="module-desc">Tempat bertanya dan dibantu komunitas.</span>
-          </div>
-          <div id="help-messages" class="messages"></div>
-          <form id="help-form" class="chat-input" autocomplete="off">
-            <input type="text" id="help-text" placeholder="Tulis pertanyaanmu di sini..." maxlength="2000" />
-            <button type="submit" class="btn-primary">Kirim</button>
-          </form>
-        </section>
-
-        <!-- ======== Voice ======== -->
-        <section id="module-voice" class="module hidden">
-          <div class="module-header voice-header">
-            <div>
-              <h2>🎙️ Voice</h2>
-              <span class="module-desc">Suara + share screen. Kamera sengaja dimatikan demi privasi.</span>
-            </div>
-            <div class="voice-controls">
-              <button id="mic-btn" class="voice-btn on">🎤 Mic: ON</button>
-              <button id="screen-btn" class="voice-btn">🖥️ Share Screen</button>
-            </div>
-          </div>
-          <div id="screen-grid" class="screen-grid"></div>
-          <div id="voice-messages" class="messages"></div>
-          <form id="voice-form" class="chat-input" autocomplete="off">
-            <input type="text" id="voice-text" placeholder="Ketik pesan di ruang voice..." maxlength="2000" />
-            <button type="submit" class="btn-primary">Kirim</button>
-          </form>
-        </section>
+        </div>
+        <div id="screen-grid" class="screen-grid hidden"></div>
+        <div id="messages" class="messages"></div>
+        <form id="chat-form" class="chat-input" autocomplete="off">
+          <input type="text" id="chat-text" placeholder="Ketik pesan ke # general..." maxlength="2000" />
+          <button type="submit" class="btn-primary">Kirim</button>
+        </form>
       </main>
+
+      <!-- ======== Panel member (seperti Discord) ======== -->
+      <aside class="members-panel">
+        <h3>ONLINE — <span id="member-count">0</span></h3>
+        <ul id="member-list"></ul>
+      </aside>
+
     </div>
   </div>
 

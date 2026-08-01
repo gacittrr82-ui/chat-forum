@@ -5,23 +5,15 @@ const express = require("express");
 const { Server } = require("socket.io");
 const db = require("./db");
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
-// Room chat forum (bertab topik)
+// Room chat forum: satu ruang aja
 const FORUM_ROOMS = [
-  { id: "general", label: "General", emoji: "💬", desc: "Obrolan bebas semua topik" },
-  { id: "tech", label: "Teknologi", emoji: "💻", desc: "Bahasa pemrograman, gadget, AI" },
-  { id: "gaming", label: "Gaming", emoji: "🎮", desc: "Diskusi game dan e-sport" },
-  { id: "otaku", label: "Anime", emoji: "🌟", desc: "Anime, manga, budaya pop" },
-  { id: "music", label: "Musik & Film", emoji: "🎵", desc: "Lagu, film, dan serial" },
+  { id: "general", label: "Chat Forum", emoji: "💬", desc: "Obrolan bebas semua topik" },
 ];
 
 // Semua room yang valid (chat forum + help + voice)
-const VALID_ROOMS = new Set([
-  ...FORUM_ROOMS.map((r) => r.id),
-  "help",
-  "voice",
-]);
+const VALID_ROOMS = new Set(["general", "help", "voice"]);
 
 const MODULES = [
   { id: "chat", label: "Chat Forum", emoji: "💬" },
@@ -132,14 +124,35 @@ db.migrate().then(() => {
       }
     });
 
-    // ---------- Voice signaling (mic + share screen, tanpa kamera) ----------
+    // ---------- Voice (mic + share screen, tanpa kamera) ----------
+
+    const voiceUsers = new Map(); // anonId -> { id, name, micOn, deafened }
+
+    function broadcastVoice() {
+      const list = [...voiceUsers.values()];
+      io.emit("voice:users", list);
+    }
 
     socket.on("voice:join", () => {
+      voiceUsers.set(anon.id, { id: anon.id, name: anon.name, micOn: true, deafened: false });
+      broadcastVoice();
+      socket.voiceJoined = true;
       socket.broadcast.emit("voice:peer-joined", { from: socket.id, anon });
     });
 
     socket.on("voice:leave", () => {
+      if (voiceUsers.delete(anon.id)) broadcastVoice();
+      socket.voiceJoined = false;
       socket.broadcast.emit("voice:peer-left", { from: socket.id });
+    });
+
+    socket.on("voice:state", (data) => {
+      const cur = voiceUsers.get(anon.id);
+      if (cur) {
+        cur.micOn = data?.micOn !== false;
+        cur.deafened = data?.deafened === true;
+        broadcastVoice();
+      }
     });
 
     socket.on("voice:offer", (data) => {
@@ -162,6 +175,7 @@ db.migrate().then(() => {
 
     socket.on("disconnect", () => {
       rate.delete(socket.id);
+      if (voiceUsers.delete(anon.id)) broadcastVoice();
       const p = presence.get(anon.id);
       if (p) {
         p.count -= 1;

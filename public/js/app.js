@@ -17,20 +17,12 @@
   let socket = null;
 
   let activeModule = "chat";
-  let activeRoom = "general";
 
-  const FORUM_ROOMS = [
-    { id: "general", label: "General", emoji: "💬" },
-    { id: "tech", label: "Teknologi", emoji: "💻" },
-    { id: "gaming", label: "Gaming", emoji: "🎮" },
-    { id: "otaku", label: "Anime", emoji: "🌟" },
-    { id: "music", label: "Musik & Film", emoji: "🎵" },
-  ];
-
-  const MESSAGE_LISTS = {
-    chat: "#chat-messages",
-    help: "#help-messages",
-    voice: "#voice-messages",
+  // Setiap modul punya 1 room doang (Discord: 1 server = 1 channel)
+  const MODULES = {
+    chat: { room: "general", channel: "general", title: "Chat Forum", desc: "Obrolan bebas semua topik" },
+    help: { room: "help", channel: "help", title: "Help Forum", desc: "Tanya jawab & bantuan" },
+    voice: { room: "voice", channel: "voice", title: "Voice", desc: "Ngobrol pakai mic & share screen" },
   };
 
   // ---------- Util ----------
@@ -55,101 +47,91 @@
   }
 
   // ---------- Pesan ----------
-  function appendMsg(m, listEl) {
+  function msgEl(m, animate) {
     const mine = me && m.username === me.name;
     const div = document.createElement("div");
     div.className = "msg" + (mine ? " mine" : "");
+    if (!animate) div.style.animation = "none";
     div.innerHTML = `
       <div class="meta"><b>${escapeHtml(m.username)}</b> <span class="time">· ${timeLabel(m.created_at)}</span></div>
       <div class="bubble">${escapeHtml(m.text)}</div>`;
-    listEl.appendChild(div);
-    scrollBottom(listEl);
+    return div;
   }
 
-  async function loadHistory(room, listEl) {
-    try {
-      const res = await fetch(`/api/history?room=${encodeURIComponent(room)}&limit=50`);
-      if (!res.ok) return;
-      const data = await res.json();
-      listEl.innerHTML = "";
-      for (const m of data.messages) {
-        const mine = me && m.username === me.name;
-        const div = document.createElement("div");
-        div.className = "msg" + (mine ? " mine" : "");
-        div.style.animation = "none";
-        div.innerHTML = `
-          <div class="meta"><b>${escapeHtml(m.username)}</b> <span class="time">· ${timeLabel(m.created_at)}</span></div>
-          <div class="bubble">${escapeHtml(m.text)}</div>`;
-        listEl.appendChild(div);
-      }
-      scrollBottom(listEl);
-    } catch (_) {}
+  function currentRoom() {
+    return MODULES[activeModule].room;
   }
 
-  // ---------- Presence ----------
+  function loadHistory(room) {
+    const listEl = $("#messages");
+    fetch(`/api/history?room=${encodeURIComponent(room)}&limit=50`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data) return;
+        listEl.innerHTML = "";
+        for (const m of data.messages) listEl.appendChild(msgEl(m, false));
+        scrollBottom(listEl);
+      })
+      .catch(() => {});
+  }
+
+  // ---------- Presence (panel member kanan, ala Discord) ----------
   function renderPresence(list) {
-    const count = list.length;
-    $("#member-count").textContent = count;
+    $("#member-count").textContent = list.length;
     const ul = $("#member-list");
     ul.innerHTML = "";
     list.sort((a, b) => a.id - b.id);
     for (const p of list) {
       const li = document.createElement("li");
-      li.textContent = p.name;
+      li.innerHTML = `<span class="status-dot"></span><span class="member-name"></span>`;
+      li.querySelector(".member-name").textContent = p.name;
       if (me && p.id === me.id) li.classList.add("me");
       ul.appendChild(li);
     }
   }
 
-  // ---------- Modul ----------
+  // ---------- Modul (berpindah kayak Discord) ----------
   function setModule(mod) {
     activeModule = mod;
-    $$(".module-btn").forEach((b) => b.classList.toggle("active", b.dataset.module === mod));
-    $$(".module").forEach((m) => m.classList.toggle("hidden", m.id !== "module-" + mod));
+    const info = MODULES[mod];
 
-    if (mod === "chat") {
-      joinRoom(activeRoom);
-    } else if (mod === "help") {
-      joinRoom("help");
-    } else if (mod === "voice") {
-      joinRoom("voice");
+    $$(".rail-btn").forEach((b) => b.classList.toggle("active", b.dataset.module === mod));
+
+    // kolom channel: section teks vs panel voice
+    const isVoice = mod === "voice";
+    $("#channel-section").classList.toggle("hidden", isVoice);
+    $("#voice-connected").classList.toggle("hidden", !isVoice);
+    $("#channels-title").textContent = info.title;
+    $("#channel-name").textContent = info.channel;
+
+    // pane utama
+    $("#pane-title").textContent = "# " + info.channel;
+    $("#pane-desc").textContent = info.desc;
+    $("#screen-grid").classList.toggle("hidden", !isVoice);
+    $("#chat-text").placeholder = `Ketik ke # ${info.channel}...`;
+
+    if (mod === "voice") {
       enterVoice();
+    } else {
+      exitVoice();
     }
+
+    socket.emit("rooms:join", info.room);
+    loadHistory(info.room);
   }
 
-  function joinRoom(room) {
-    activeRoom = room;
-    if (socket) socket.emit("rooms:join", room);
-    const listEl = $(MESSAGE_LISTS[activeModule]);
-    if (listEl) loadHistory(room, listEl);
-    if (activeModule === "chat") renderRoomTabs(room);
-  }
-
-  function renderRoomTabs(active) {
-    const tabs = $("#chat-room-tabs");
-    tabs.innerHTML = "";
-    for (const r of FORUM_ROOMS) {
-      const b = document.createElement("button");
-      b.className = "room-tab" + (r.id === active ? " active" : "");
-      b.textContent = `${r.emoji} ${r.label}`;
-      b.addEventListener("click", () => {
-        activeRoom = r.id;
-        renderRoomTabs(r.id);
-        socket.emit("rooms:join", r.id);
-        loadHistory(r.id, $("#chat-messages"));
-      });
-      tabs.appendChild(b);
-    }
-  }
-
-  // ---------- Voice (WebRTC mesh: mic + screen share, tanpa kamera) ----------
+  // ---------- Voice (WebRTC mesh: mic + share screen, tanpa kamera) ----------
 
   const peers = new Map(); // socketId -> { pc, polite, makingOffer, isSettingRemoteAnswer }
   const screenVideos = new Map(); // socketId -> <video>
+  const remoteAudios = new Set(); // <audio> remote
   let localMicStream = null;
   let localScreenStream = null;
   let micOn = true;
+  let deafened = false;
   let inVoice = false;
+
+  let voiceUsers = []; // [{id, name, micOn, deafened}]
 
   function audioElFor(stream) {
     const audio = document.createElement("audio");
@@ -157,6 +139,7 @@
     audio.playsInline = true;
     audio.srcObject = stream;
     document.body.appendChild(audio);
+    remoteAudios.add(audio);
     return audio;
   }
 
@@ -257,10 +240,6 @@
     }
   }
 
-  function leaveVoicePeer(socketId) {
-    closePeer(socketId);
-  }
-
   function addScreenVideo(socketId, stream, label) {
     const grid = $("#screen-grid");
     let video = screenVideos.get(socketId);
@@ -284,19 +263,50 @@
     }
   }
 
+  // --- Daftar user di voice channel (ala Discord) ---
+  function renderVoiceUsers() {
+    const el = $("#voice-users");
+    el.innerHTML = "";
+    const sorted = [...voiceUsers].sort((a, b) => (a.id === (me && me.id) ? -1 : 0));
+    for (const u of sorted) {
+      const div = document.createElement("div");
+      div.className = "voice-user" + (me && u.id === me.id ? " me" : "");
+      const icon = u.deafened ? "🔇" : u.micOn ? "🎤" : "🔇";
+      div.innerHTML = `<span class="voice-ico">${icon}</span><span class="voice-name">${escapeHtml(u.name)}</span>`;
+      el.appendChild(div);
+    }
+    if (!voiceUsers.length) {
+      const div = document.createElement("div");
+      div.className = "voice-empty";
+      div.textContent = "Belum ada yang nyambung. Klik tombol mic buat join.";
+      el.appendChild(div);
+    }
+  }
+
+  function updateVoiceStateUi() {
+    const micBtn = $("#mic-btn");
+    const deafBtn = $("#deafen-btn");
+    micBtn.classList.toggle("on", micOn && !deafened);
+    deafBtn.classList.toggle("on", deafened);
+    micBtn.textContent = deafened ? "🔇" : micOn ? "🎤" : "🔇";
+    deafBtn.textContent = deafened ? "🔈" : "🔇";
+  }
+
   async function enterVoice() {
+    if (inVoice) return;
     inVoice = true;
     if (!localMicStream) {
       try {
         localMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        localMicStream.getAudioTracks().forEach((t) => (t.enabled = micOn && !deafened));
       } catch (err) {
         console.error("Mic tidak bisa diakses:", err);
-        $("#mic-btn").textContent = "🎤 Mic: BLOKIR";
-        $("#mic-btn").classList.remove("on");
         micOn = false;
+        alert("Mic tidak bisa diakses. Pastikan izin mic sudah diberikan.");
       }
     }
     socket.emit("voice:join");
+    socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
   }
 
   function exitVoice() {
@@ -304,20 +314,37 @@
     inVoice = false;
     socket.emit("voice:leave");
     for (const sid of Array.from(peers.keys())) closePeer(sid);
+    for (const a of remoteAudios) {
+      try {
+        a.srcObject = null;
+        a.remove();
+      } catch (_) {}
+    }
+    remoteAudios.clear();
     const grid = $("#screen-grid");
     grid.innerHTML = "";
+    screenVideos.clear();
+    voiceUsers = [];
+    renderVoiceUsers();
   }
 
-  function bindVoiceControls() {
-    $("#mic-btn").addEventListener("click", () => {
-      if (!localMicStream) return;
-      micOn = !micOn;
-      localMicStream.getAudioTracks().forEach((t) => (t.enabled = micOn));
-      $("#mic-btn").classList.toggle("on", micOn);
-      $("#mic-btn").textContent = micOn ? "🎤 Mic: ON" : "🎤 Mic: OFF";
-    });
+  function toggleMic() {
+    micOn = !micOn;
+    if (localMicStream) {
+      localMicStream.getAudioTracks().forEach((t) => (t.enabled = micOn && !deafened));
+    }
+    socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
+    updateVoiceStateUi();
+  }
 
-    $("#screen-btn").addEventListener("click", toggleScreen);
+  function toggleDeafen() {
+    deafened = !deafened;
+    for (const a of remoteAudios) a.muted = deafened;
+    if (localMicStream) {
+      localMicStream.getAudioTracks().forEach((t) => (t.enabled = micOn && !deafened));
+    }
+    socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
+    updateVoiceStateUi();
   }
 
   async function toggleScreen() {
@@ -333,7 +360,6 @@
     const track = localScreenStream.getVideoTracks()[0];
     if (track) track.onended = () => stopScreen();
 
-    // preview sendiri
     addScreenVideo("__self", localScreenStream, `${me ? me.name : "Kamu"} · Layar`);
 
     for (const peer of peers.values()) {
@@ -344,7 +370,6 @@
         console.error("add screen to peer", err);
       }
     }
-    $("#screen-btn").textContent = "⏹️ Stop Share";
     $("#screen-btn").classList.add("on");
   }
 
@@ -367,27 +392,20 @@
       }
       renegotiate(peer);
     }
-    $("#screen-btn").textContent = "🖥️ Share Screen";
     $("#screen-btn").classList.remove("on");
   }
 
   // ---------- Kirim pesan ----------
-  function bindForms() {
-    const bind = (formId, inputId, room) => {
-      const form = $(formId);
-      const input = $(inputId);
-      form.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const text = input.value.trim();
-        if (!text || !socket) return;
-        socket.emit("message:send", { room, text });
-        input.value = "";
-        input.focus();
-      });
-    };
-    bind("#chat-form", "#chat-text", () => activeRoom);
-    bind("#help-form", "#help-text", "help");
-    bind("#voice-form", "#voice-text", "voice");
+  function bindChatForm() {
+    $("#chat-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = $("#chat-text");
+      const text = input.value.trim();
+      if (!text || !socket) return;
+      socket.emit("message:send", { room: currentRoom(), text });
+      input.value = "";
+      input.focus();
+    });
   }
 
   // ---------- Init ----------
@@ -401,6 +419,7 @@
       const data = await res.json();
       if (!data.anon) throw new Error("anon");
       me = data.anon;
+      renderPresence([]);
       $("#current-user").textContent = "🕶️ " + me.name;
     } catch (err) {
       alert("Gagal mendapatkan identitas anonim. Coba muat ulang.");
@@ -411,10 +430,8 @@
 
     socket.on("connect", () => {
       $("#conn-status").textContent = "🟢 online";
-      if (me) {
-        socket.emit("rooms:join", activeModule === "help" ? "help" : activeModule === "voice" ? "voice" : activeRoom);
-      }
-      if (activeModule === "voice" && inVoice) socket.emit("voice:join");
+      if (me) socket.emit("rooms:join", currentRoom());
+      if (inVoice) socket.emit("voice:join");
     });
 
     socket.on("disconnect", () => {
@@ -432,25 +449,22 @@
     socket.on("presence:update", renderPresence);
 
     socket.on("message:new", (m) => {
-      if (m.room === "help") {
-        if (activeModule !== "help") return;
-        appendMsg(m, $("#help-messages"));
-      } else if (m.room === "voice") {
-        if (activeModule !== "voice") return;
-        appendMsg(m, $("#voice-messages"));
-      } else {
-        if (activeModule !== "chat" || m.room !== activeRoom) return;
-        appendMsg(m, $("#chat-messages"));
-      }
+      if (m.room !== currentRoom()) return;
+      $("#messages").appendChild(msgEl(m, true));
+      scrollBottom($("#messages"));
     });
 
     socket.on("room:joined", ({ room }) => {
-      const listEl = $(MESSAGE_LISTS[activeModule]);
-      if (listEl) loadHistory(room, listEl);
+      loadHistory(room);
     });
 
     // Voice events
-    socket.on("voice:peer-joined", ({ from, anon }) => {
+    socket.on("voice:users", (list) => {
+      voiceUsers = list;
+      renderVoiceUsers();
+    });
+
+    socket.on("voice:peer-joined", ({ from }) => {
       if (!inVoice) return;
       const peer = ensurePeer(from, false);
       if (peer && !peer.pc.remoteDescription) renegotiate(peer);
@@ -479,22 +493,24 @@
     });
 
     // Bind UI
-    $$(".module-btn").forEach((b) => {
-      b.addEventListener("click", () => {
-        if (activeModule === "voice" && b.dataset.module !== "voice") exitVoice();
-        setModule(b.dataset.module);
-      });
+    $$(".rail-btn").forEach((b) => {
+      b.addEventListener("click", () => setModule(b.dataset.module));
     });
 
-    bindForms();
-    bindVoiceControls();
-    renderRoomTabs(activeRoom);
+    $("#mic-btn").addEventListener("click", toggleMic);
+    $("#deafen-btn").addEventListener("click", toggleDeafen);
+    $("#screen-btn").addEventListener("click", toggleScreen);
+    $("#leave-voice-btn").addEventListener("click", () => {
+      exitVoice();
+      setModule("chat");
+    });
+
+    bindChatForm();
+    updateVoiceStateUi();
+    setModule("chat");
 
     $("#loading").classList.add("hidden");
     $("#app").classList.remove("hidden");
-
-    socket.emit("rooms:join", activeRoom);
-    loadHistory(activeRoom, $("#chat-messages"));
   }
 
   init();
