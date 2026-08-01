@@ -3,48 +3,99 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Masuk — Chat Forum</title>
+  <title>HIDDEN SOCIETY Forums</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <main class="auth-wrap">
-    <section class="auth-card">
+  <div id="loading" class="loading">
+    <div class="loading-inner">
+      <div class="brand-logo">🕶️</div>
+      <p>Menghubungi Hidden Society...</p>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
+    <header class="topbar">
       <div class="brand">
-        <div class="brand-logo">&#128172;</div>
-        <h1>Chat Forum</h1>
-        <p>Tempat ngobrol seru bareng komunitas.</p>
+        <div class="brand-logo">🕶️</div>
+        <div class="brand-text">
+          <span class="brand-name">HIDDEN SOCIETY</span>
+          <span class="brand-sub">Forums</span>
+        </div>
       </div>
+      <div class="topbar-right">
+        <span id="conn-status" class="badge">🔴 offline</span>
+        <span id="online-count" class="badge">🟢 <b>0</b> online</span>
+        <span id="current-user" class="user-chip">...</span>
+      </div>
+    </header>
 
-      <form id="login-form" class="auth-form">
-        <h2>Masuk</h2>
-        <label>Username
-          <input type="text" id="login-username" autocomplete="username" required />
-        </label>
-        <label>Password
-          <input type="password" id="login-password" autocomplete="current-password" required />
-        </label>
-        <p class="error" id="login-error"></p>
-        <button type="submit" class="btn-primary">Masuk</button>
-        <p class="switch">Belum punya akun? <a href="#" id="show-register">Daftar</a></p>
-      </form>
+    <div class="layout">
+      <aside class="sidebar">
+        <nav class="modules">
+          <h3>Modul</h3>
+          <button class="module-btn active" data-module="chat">💬 Chat Forum</button>
+          <button class="module-btn" data-module="help">🆘 Help Forum</button>
+          <button class="module-btn" data-module="voice">🎙️ Voice</button>
+        </nav>
 
-      <form id="register-form" class="auth-form hidden">
-        <h2>Daftar Akun</h2>
-        <label>Username (3-20 karakter)
-          <input type="text" id="reg-username" autocomplete="username" required />
-        </label>
-        <label>Password (min. 6 karakter)
-          <input type="password" id="reg-password" autocomplete="new-password" required />
-        </label>
-        <label>Ulangi password
-          <input type="password" id="reg-password2" autocomplete="new-password" required />
-        </label>
-        <p class="error" id="register-error"></p>
-        <button type="submit" class="btn-primary">Daftar</button>
-        <p class="switch">Sudah punya akun? <a href="#" id="show-login">Masuk</a></p>
-      </form>
-    </section>
-  </main>
-  <script src="js/auth.js"></script>
+        <div class="members">
+          <h3>Online <span id="member-count" class="count-pill">0</span></h3>
+          <ul id="member-list"></ul>
+        </div>
+      </aside>
+
+      <main class="pane">
+        <!-- ======== Chat Forum ======== -->
+        <section id="module-chat" class="module">
+          <div class="module-header">
+            <h2>💬 Chat Forum</h2>
+            <div class="room-tabs" id="chat-room-tabs"></div>
+          </div>
+          <div id="chat-messages" class="messages"></div>
+          <form id="chat-form" class="chat-input" autocomplete="off">
+            <input type="text" id="chat-text" placeholder="Ketik pesan, lalu Enter..." maxlength="2000" />
+            <button type="submit" class="btn-primary">Kirim</button>
+          </form>
+        </section>
+
+        <!-- ======== Help Forum ======== -->
+        <section id="module-help" class="module hidden">
+          <div class="module-header">
+            <h2>🆘 Help Forum</h2>
+            <span class="module-desc">Tempat bertanya dan dibantu komunitas.</span>
+          </div>
+          <div id="help-messages" class="messages"></div>
+          <form id="help-form" class="chat-input" autocomplete="off">
+            <input type="text" id="help-text" placeholder="Tulis pertanyaanmu di sini..." maxlength="2000" />
+            <button type="submit" class="btn-primary">Kirim</button>
+          </form>
+        </section>
+
+        <!-- ======== Voice ======== -->
+        <section id="module-voice" class="module hidden">
+          <div class="module-header voice-header">
+            <div>
+              <h2>🎙️ Voice</h2>
+              <span class="module-desc">Suara + share screen. Kamera sengaja dimatikan demi privasi.</span>
+            </div>
+            <div class="voice-controls">
+              <button id="mic-btn" class="voice-btn on">🎤 Mic: ON</button>
+              <button id="screen-btn" class="voice-btn">🖥️ Share Screen</button>
+            </div>
+          </div>
+          <div id="screen-grid" class="screen-grid"></div>
+          <div id="voice-messages" class="messages"></div>
+          <form id="voice-form" class="chat-input" autocomplete="off">
+            <input type="text" id="voice-text" placeholder="Ketik pesan di ruang voice..." maxlength="2000" />
+            <button type="submit" class="btn-primary">Kirim</button>
+          </form>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

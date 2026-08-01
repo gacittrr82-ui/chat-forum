@@ -1,7 +1,7 @@
 {
-  "name": "chat-forum",
-  "version": "1.0.0",
-  "description": "Website chat forum realtime (Node.js + Express + Socket.io)",
+  "name": "hidden-society-forums",
+  "version": "2.0.0",
+  "description": "HIDDEN SOCIETY Forums — chat forum anonim realtime (Node.js + Express + Socket.io)",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -12,10 +12,8 @@
     "node": ">=18"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "pg": "^8.11.5",
     "socket.io": "^4.7.5"
   }
 }

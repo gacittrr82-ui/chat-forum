@@ -1,23 +1,30 @@
-# Chat Forum
+# HIDDEN SOCIETY Forums
 
-Website forum chat realtime (Node.js + Express + Socket.io).
+Chat forum anonim realtime (Node.js + Express + Socket.io). Tanpa daftar akun —
+setiap pengunjung otomatis mendapat identitas **ANONIM-<nomor>** sesuai urutan
+pertama kali masuk.
 
 ## Fitur
 
-- Realtime chat (WebSocket via Socket.io)
-- Register & login (password di-hash dengan bcrypt)
-- Multi-room / topik diskusi
-- Riwayat chat tersimpan di database (SQLite lokal / PostgreSQL di produksi)
-- Token sesi aman
+- **Identitas anonim otomatis**: `ANONIM-1`, `ANONIM-2`, ... Nomor diberikan
+  berdasarkan urutan kedatangan dan permanen untuk tiap perangkat.
+- **Chat Forum**: obrolan dengan beberapa ruang topik (General, Teknologi,
+  Gaming, Anime, Musik & Film).
+- **Help Forum**: ruang chat khusus bantuan komunitas.
+- **Voice**: voice chat (microphone) + share screen. **Kamera sengaja tidak
+  dipakai** demi privasi.
+- **Daftar online**: siapa saja yang sedang berada di forum.
+- Riwayat pesan tersimpan di file `data.json`.
 
 ## Struktur
 
 ```
-server.js          # Express + Socket.io + API
-db.js              # Lapisan database (SQLite & PostgreSQL)
-public/            # Frontend (HTML/CSS/JS)
-render.yaml        # Konfigurasi deploy Render (Blueprint)
-.env.example       # Contoh variabel lingkungan
+server.js          # Express + Socket.io + API + signaling voice
+db.js              # Penyimpanan JSON murni JS (tanpa modul native)
+public/index.html  # Halaman utama forum
+public/js/app.js   # Logika client (chat, presence, WebRTC voice)
+public/css/style.css
+render.yaml        # (opsional) konfigurasi Render
 ```
 
 ## Menjalankan secara lokal (opsional)
@@ -28,35 +35,20 @@ npm start
 # buka http://localhost:3000
 ```
 
-Tanpa `DATABASE_URL`, pesan otomatis tersimpan di `data.sqlite`.
+## Deploy ke Belmo (gratis, tanpa kartu, server selalu hidup)
 
-## Deploy ke Render (gratis)
+1. Pastikan repo di GitHub (branch `main`).
+2. Di https://belmo.io → Connect GitHub → **New service → API**.
+3. Pilih repo, branch `main`, biarkan build/start otomatis (`npm install` /
+   `npm start`).
+4. Klik **Deploy**. Setelah Live, situs terbuka di URL
+   `https://<nama>.app.belmo.io` / `onbelmo.uk`.
 
-Cara paling cepat — pakai Blueprint (file `render.yaml` sudah disiapkan):
+## Catatan
 
-1. Buat akun di https://render.com (bisa login pakai GitHub).
-2. Upload project ini ke GitHub repository.
-3. Klik link deploy satu-klik, atau di Render dashboard: **New → Blueprint**, pilih repo, lalu **Apply**.
-4. Tunggu build selesai, situs online di URL `https://chat-forum-xxxx.onrender.com`.
-
-### Cara manual (tanpa Blueprint)
-
-1. **New → Web Service** → pilih repo:
-   - Runtime: **Node**
-   - Build Command: `npm install`
-   - Start Command: `npm start`
-2. Environment Variables:
-   - `TOKEN_SECRET` = string acak panjang
-3. Deploy.
-
-> Kode ini memakai **SQLite** (tanpa database eksternal). Di Render, disk
-> bersifat sementara, jadi riwayat chat tersimpan selama instance tidak
-> di-deploy ulang. Kalau mau riwayat permanen, gunakan `DATABASE_URL`
-> PostgreSQL (mis. Neon gratis) — kode otomatis mendeteksinya.
-
-## Catatan penting
-
-- Render free tier: server tidur setelah ~15 menit tanpa pengunjung, lalu
-  bangun sendiri saat ada yang buka (cold start ~30-60 detik). Ini normal
-  dan tidak perlu kartu kredit.
-- Ganti `TOKEN_SECRET` dengan nilai acak yang panjang dan jangan dibagikan.
+- Data tersimpan di file `data.json`. Pada hosting, disk bisa di-reset saat
+  deploy ulang, sehingga riwayat bisa hilang (normal untuk hosting gratis).
+- Identitas anonim memakai token perangkat di `localStorage`; menghapus
+  localStorage akan mendapatkan nomor baru.
+- Voice memakai WebRTC mesh (p2p langsung antar browser), cocok untuk jumlah
+  peserta sedikit.
