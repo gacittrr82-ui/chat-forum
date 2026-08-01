@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Masuk — Chat Forum</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="auth-wrap">
+    <section class="auth-card">
+      <div class="brand">
+        <div class="brand-logo">&#128172;</div>
+        <h1>Chat Forum</h1>
+        <p>Tempat ngobrol seru bareng komunitas.</p>
+      </div>
+
+      <form id="login-form" class="auth-form">
+        <h2>Masuk</h2>
+        <label>Username
+          <input type="text" id="login-username" autocomplete="username" required />
+        </label>
+        <label>Password
+          <input type="password" id="login-password" autocomplete="current-password" required />
+        </label>
+        <p class="error" id="login-error"></p>
+        <button type="submit" class="btn-primary">Masuk</button>
+        <p class="switch">Belum punya akun? <a href="#" id="show-register">Daftar</a></p>
+      </form>
+
+      <form id="register-form" class="auth-form hidden">
+        <h2>Daftar Akun</h2>
+        <label>Username (3-20 karakter)
+          <input type="text" id="reg-username" autocomplete="username" required />
+        </label>
+        <label>Password (min. 6 karakter)
+          <input type="password" id="reg-password" autocomplete="new-password" required />
+        </label>
+        <label>Ulangi password
+          <input type="password" id="reg-password2" autocomplete="new-password" required />
+        </label>
+        <p class="error" id="register-error"></p>
+        <button type="submit" class="btn-primary">Daftar</button>
+        <p class="switch">Sudah punya akun? <a href="#" id="show-login">Masuk</a></p>
+      </form>
+    </section>
+  </main>
+  <script src="js/auth.js"></script>
+</body>
+</html>
