@@ -3,6 +3,7 @@ data.sqlite
 data.sqlite-journal
 data.sqlite-wal
 data.sqlite-shm
+data.json
 .env
 *.log
 .DS_Store

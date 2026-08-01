@@ -1,69 +1,38 @@
+const fs = require("fs");
 const path = require("path");
 
 const DATABASE_URL = process.env.DATABASE_URL || "";
+const DATA_FILE = path.join(__dirname, "data.json");
 
-let db;
+// ---------- Penyimpanan default: file JSON murni JS (tanpa modul native) ----------
+// Bisa dipakai di platform mana pun. Gunakan DATABASE_URL PostgreSQL bila perlu.
 
-function init() {
-  if (DATABASE_URL) {
-    const { Pool } = require("pg");
-    db = new Pool({
-      connectionString: DATABASE_URL,
-      connectionTimeoutMillis: 10000,
-    });
-    db.query("SELECT 1").catch((err) => {
-      console.error("Postgres tidak bisa dihubungi:", err.message);
-      process.exit(1);
-    });
-    console.log("Database: PostgreSQL");
-  } else {
-    const Database = require("better-sqlite3");
-    db = new Database(path.join(__dirname, "data.sqlite"));
-    db.pragma("journal_mode = WAL");
-    console.log("Database: SQLite (data.sqlite)");
+let jsonDb = null;
+let pgPool = null;
+
+function loadJsonDb() {
+  if (jsonDb) return jsonDb;
+  let state = { users: [], sessions: [], messages: [], seq: { users: 0, messages: 0 } };
+  if (fs.existsSync(DATA_FILE)) {
+    try {
+      state = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+      if (!state.users || !state.sessions || !state.messages || !state.seq) {
+        state = { users: [], sessions: [], messages: [], seq: { users: 0, messages: 0 } };
+      }
+    } catch (_) {
+      state = { users: [], sessions: [], messages: [], seq: { users: 0, messages: 0 } };
+    }
   }
-  return db;
+  jsonDb = state;
+  return jsonDb;
 }
 
-function migrate() {
-  const idType = DATABASE_URL ? "SERIAL PRIMARY KEY" : "INTEGER PRIMARY KEY AUTOINCREMENT";
-
-  const schema = `
-    CREATE TABLE IF NOT EXISTS users (
-      id ${idType},
-      username TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS sessions (
-      token TEXT PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id ${idType},
-      room TEXT NOT NULL,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      username TEXT NOT NULL,
-      text TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room, created_at);
-    CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
-  `;
-
-  if (DATABASE_URL) {
-    const statements = schema
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    return db.query(statements.join(";"));
+function saveJsonDb() {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(jsonDb));
+  } catch (err) {
+    console.error("Gagal menyimpan data:", err.message);
   }
-  db.exec(schema);
-  return Promise.resolve();
 }
 
 function normalize(row) {
@@ -71,127 +40,170 @@ function normalize(row) {
   return { ...row };
 }
 
-const q = {
-  createUser(username, passwordHash) {
-    const params = [username, passwordHash];
-    if (DATABASE_URL) {
-      return db
-        .query(
-          "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
-          params
-        )
-        .then((r) => normalize(r.rows[0]));
-    }
-    const info = db
-      .prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)")
-      .run(...params);
-    return db
-      .prepare("SELECT id, username FROM users WHERE id = ?")
-      .get(info.lastInsertRowid);
-  },
+function init() {
+  if (DATABASE_URL) {
+    const { Pool } = require("pg");
+    pgPool = new Pool({
+      connectionString: DATABASE_URL,
+      connectionTimeoutMillis: 10000,
+    });
+    pgPool.query("SELECT 1").catch((err) => {
+      console.error("Postgres tidak bisa dihubungi:", err.message);
+      process.exit(1);
+    });
+    console.log("Database: PostgreSQL");
+  } else {
+    loadJsonDb();
+    console.log("Database: JSON file (data.json)");
+  }
+}
 
-  findUserByUsername(username) {
-    if (DATABASE_URL) {
-      return db
-        .query("SELECT * FROM users WHERE username = $1", [username])
-        .then((r) => normalize(r.rows[0]));
-    }
-    return db.prepare("SELECT * FROM users WHERE username = ?").get(username);
-  },
-
-  findUserById(id) {
-    if (DATABASE_URL) {
-      return db
-        .query("SELECT id, username FROM users WHERE id = $1", [id])
-        .then((r) => normalize(r.rows[0]));
-    }
-    return db
-      .prepare("SELECT id, username FROM users WHERE id = ?")
-      .get(id);
-  },
-
-  createSession(token, userId) {
-    if (DATABASE_URL) {
-      return db.query(
-        "INSERT INTO sessions (token, user_id) VALUES ($1, $2)",
-        [token, userId]
+function migrate() {
+  if (DATABASE_URL) {
+    const schema = `
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE TABLE IF NOT EXISTS messages (
+        id SERIAL PRIMARY KEY,
+        room TEXT NOT NULL,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        username TEXT NOT NULL,
+        text TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_messages_room ON messages(room, created_at);
+      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+    `;
+    const statements = schema
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return pgPool.query(statements.join(";"));
+  }
+  return Promise.resolve();
+}
+
+const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
+
+const q = {
+  async createUser(username, passwordHash) {
+    if (DATABASE_URL) {
+      const r = await pgPool.query(
+        "INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id, username",
+        [username, passwordHash]
+      );
+      return normalize(r.rows[0]);
     }
-    db.prepare("INSERT INTO sessions (token, user_id) VALUES (?, ?)").run(
-      token,
-      userId
-    );
+    const state = loadJsonDb();
+    state.seq.users += 1;
+    const user = { id: state.seq.users, username, password_hash: passwordHash, created_at: now() };
+    state.users.push(user);
+    saveJsonDb();
+    return { id: user.id, username: user.username };
   },
 
-  findUserByToken(token) {
+  async findUserByUsername(username) {
     if (DATABASE_URL) {
-      return db
-        .query(
-          `SELECT u.id, u.username FROM sessions s
-           JOIN users u ON u.id = s.user_id
-           WHERE s.token = $1`,
-          [token]
-        )
-        .then((r) => normalize(r.rows[0]));
+      const r = await pgPool.query("SELECT * FROM users WHERE username = $1", [username]);
+      return normalize(r.rows[0]);
     }
-    return db
-      .prepare(
+    return normalize(loadJsonDb().users.find((u) => u.username === username));
+  },
+
+  async findUserById(id) {
+    if (DATABASE_URL) {
+      const r = await pgPool.query("SELECT id, username FROM users WHERE id = $1", [id]);
+      return normalize(r.rows[0]);
+    }
+    const u = loadJsonDb().users.find((x) => x.id === id);
+    return u ? { id: u.id, username: u.username } : null;
+  },
+
+  async createSession(token, userId) {
+    if (DATABASE_URL) {
+      return pgPool.query("INSERT INTO sessions (token, user_id) VALUES ($1, $2)", [
+        token,
+        userId,
+      ]);
+    }
+    const state = loadJsonDb();
+    state.sessions.push({ token, user_id: userId, created_at: now() });
+    saveJsonDb();
+  },
+
+  async findUserByToken(token) {
+    if (DATABASE_URL) {
+      const r = await pgPool.query(
         `SELECT u.id, u.username FROM sessions s
          JOIN users u ON u.id = s.user_id
-         WHERE s.token = ?`
-      )
-      .get(token);
+         WHERE s.token = $1`,
+        [token]
+      );
+      return normalize(r.rows[0]);
+    }
+    const state = loadJsonDb();
+    const s = state.sessions.find((x) => x.token === token);
+    if (!s) return null;
+    const u = state.users.find((x) => x.id === s.user_id);
+    return u ? { id: u.id, username: u.username } : null;
   },
 
-  deleteSession(token) {
+  async deleteSession(token) {
     if (DATABASE_URL) {
-      return db.query("DELETE FROM sessions WHERE token = $1", [token]);
+      return pgPool.query("DELETE FROM sessions WHERE token = $1", [token]);
     }
-    db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
+    const state = loadJsonDb();
+    state.sessions = state.sessions.filter((x) => x.token !== token);
+    saveJsonDb();
   },
 
-  getMessages(room, limit = 50) {
+  async getMessages(room, limit = 50) {
     if (DATABASE_URL) {
-      return db
-        .query(
-          `SELECT id, room, username, text, created_at
-           FROM messages WHERE room = $1
-           ORDER BY created_at ASC LIMIT $2`,
-          [room, limit]
-        )
-        .then((r) => r.rows);
-    }
-    return db
-      .prepare(
+      const r = await pgPool.query(
         `SELECT id, room, username, text, created_at
-         FROM messages WHERE room = ?
-         ORDER BY created_at ASC LIMIT ?`
-      )
-      .all(room, limit);
+         FROM messages WHERE room = $1
+         ORDER BY created_at ASC LIMIT $2`,
+        [room, limit]
+      );
+      return r.rows;
+    }
+    return loadJsonDb()
+      .messages.filter((m) => m.room === room)
+      .slice(-limit);
   },
 
-  addMessage(room, userId, username, text) {
-    const params = [room, userId, username, text];
+  async addMessage(room, userId, username, text) {
     if (DATABASE_URL) {
-      return db
-        .query(
-          `INSERT INTO messages (room, user_id, username, text)
-           VALUES ($1, $2, $3, $4)
-           RETURNING id, room, username, text, created_at`,
-          params
-        )
-        .then((r) => normalize(r.rows[0]));
+      const r = await pgPool.query(
+        `INSERT INTO messages (room, user_id, username, text)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, room, username, text, created_at`,
+        [room, userId, username, text]
+      );
+      return normalize(r.rows[0]);
     }
-    const info = db
-      .prepare(
-        "INSERT INTO messages (room, user_id, username, text) VALUES (?, ?, ?, ?)"
-      )
-      .run(...params);
-    return db
-      .prepare(
-        "SELECT id, room, username, text, created_at FROM messages WHERE id = ?"
-      )
-      .get(info.lastInsertRowid);
+    const state = loadJsonDb();
+    state.seq.messages += 1;
+    const msg = {
+      id: state.seq.messages,
+      room,
+      user_id: userId,
+      username,
+      text,
+      created_at: now(),
+    };
+    state.messages.push(msg);
+    saveJsonDb();
+    return normalize(msg);
   },
 };
 
