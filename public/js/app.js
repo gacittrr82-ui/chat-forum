@@ -405,6 +405,7 @@
   let analyser = null;
   let audioCtx = null;
   let sfxCtx = null;
+  let screenBusy = false;
 
   function audioElFor(stream) {
     const audio = document.createElement("audio");
@@ -534,23 +535,17 @@
       peers.delete(socketId);
       if (peer.anonId != null) peerByAnon.delete(peer.anonId);
     }
-    const video = screenVideos.get(socketId);
-    if (video) {
-      video.remove();
-      screenVideos.delete(socketId);
-    }
+    removeScreenVideo(socketId);
   }
 
   function addScreenVideo(socketId, stream, label) {
     const grid = $("#screen-grid");
-    let video = screenVideos.get(socketId);
-    if (!video) {
-      video = document.createElement("video");
+    let wrap = screenVideos.get(socketId);
+    if (!wrap) {
+      const video = document.createElement("video");
       video.autoplay = true;
       video.playsInline = true;
-      video.srcObject = stream;
-      screenVideos.set(socketId, video);
-      const wrap = document.createElement("div");
+      wrap = document.createElement("div");
       wrap.className = "screen-tile";
       wrap.dataset.sid = socketId;
       wrap.appendChild(video);
@@ -563,8 +558,26 @@
       live.textContent = "● LIVE";
       wrap.appendChild(live);
       grid.appendChild(wrap);
-    } else {
-      video.srcObject = stream;
+      screenVideos.set(socketId, wrap);
+    }
+    const video = wrap.querySelector("video");
+    video.srcObject = stream;
+    if (socketId !== "__self") {
+      const t = stream.getVideoTracks()[0];
+      const cleanup = () => {
+        const w = screenVideos.get(socketId);
+        if (w && w.querySelector("video").srcObject === stream) removeScreenVideo(socketId);
+      };
+      if (t) t.onended = cleanup;
+      stream.onremovetrack = cleanup;
+    }
+  }
+
+  function removeScreenVideo(socketId) {
+    const wrap = screenVideos.get(socketId);
+    if (wrap) {
+      wrap.remove();
+      screenVideos.delete(socketId);
     }
   }
 
@@ -643,7 +656,7 @@
     deafBtn.textContent = "🎧";
     scrBtn.classList.toggle("on", !!localScreenStream);
     scrBtn.textContent = "🖥️";
-    $("#screen-grid").classList.toggle("hidden", !(inVoice && localScreenStream));
+    $("#screen-grid").classList.toggle("hidden", !(inVoice && screenVideos.size > 0));
 
     const vmic = $("#voice-mic-btn");
     vmic.classList.toggle("muted", !transmitOn);
@@ -930,8 +943,9 @@
       alert("Join voice dulu (klik General Voice) sebelum share screen.");
       return;
     }
+    if (screenBusy) return;
     if (localScreenStream) {
-      stopScreen();
+      await stopScreen();
       return;
     }
     try {
@@ -946,6 +960,10 @@
 
     for (const peer of peers.values()) {
       try {
+        const old = peer.pc.getSenders().filter((s) => s.track && s.track.kind === "video");
+        for (const s of old) {
+          try { peer.pc.removeTrack(s); } catch (_) {}
+        }
         for (const t of localScreenStream.getVideoTracks()) peer.pc.addTrack(t, localScreenStream);
         await renegotiate(peer);
       } catch (err) {
@@ -955,24 +973,28 @@
     updateVoiceUi();
   }
 
-  function stopScreen() {
-    if (localScreenStream) {
-      localScreenStream.getTracks().forEach((t) => t.stop());
-      localScreenStream = null;
-    }
-    const self = screenVideos.get("__self");
-    if (self) {
-      self.remove();
-      screenVideos.delete("__self");
-    }
-    for (const peer of peers.values()) {
-      const senders = peer.pc.getSenders().filter((s) => s.track && s.track.kind === "video");
-      for (const s of senders) {
+  async function stopScreen() {
+    if (screenBusy) return;
+    screenBusy = true;
+    try {
+      if (localScreenStream) {
+        localScreenStream.getTracks().forEach((t) => t.stop());
+        localScreenStream = null;
+      }
+      removeScreenVideo("__self");
+      for (const peer of peers.values()) {
+        const senders = peer.pc.getSenders().filter((s) => s.track && s.track.kind === "video");
+        for (const s of senders) {
+          try {
+            peer.pc.removeTrack(s);
+          } catch (_) {}
+        }
         try {
-          peer.pc.removeTrack(s);
+          await renegotiate(peer);
         } catch (_) {}
       }
-      renegotiate(peer);
+    } finally {
+      screenBusy = false;
     }
     updateVoiceUi();
   }
