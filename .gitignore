@@ -5,6 +5,10 @@ data.sqlite-wal
 data.sqlite-shm
 data.json
 public/uploads/
+uploads/
+config.json
+build/
 .env
 *.log
 .DS_Store
+

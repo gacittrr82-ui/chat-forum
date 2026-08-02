@@ -2,7 +2,13 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data.json");
+// Folder aplikasi: saat dikemas jadi .exe, pakai folder tempat exe berada
+// (supaya data.json bisa ditulis di samping exe). Saat dev, pakai folder proyek.
+function appBase() {
+  return process.pkg ? path.dirname(process.execPath) : __dirname;
+}
+
+const DATA_FILE = process.env.DATA_FILE || path.join(appBase(), "data.json");
 const ALT_DATA_FILE = path.join(os.tmpdir(), "chat-forum-data.json");
 
 // Penyimpanan murni JavaScript (file JSON). Tidak ada dependensi native,
@@ -17,6 +23,7 @@ function defaultState() {
     anonUsers: [], // { id, device_token, created_at, display_name, color, avatar_emoji }
     messages: [], // { id, room, user_id, username, text, created_at, reply_to, mentions, attachment, reactions }
     seq: { messages: 0 },
+    updated_at: null,
   };
 }
 
@@ -41,12 +48,16 @@ function loadJsonDb() {
 
 function saveJsonDb() {
   try {
-    fs.writeFileSync(dataFile, JSON.stringify(jsonDb));
+    jsonDb.updated_at = new Date().toISOString().replace("T", " ").slice(0, 19);
+    const tmp = dataFile + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(jsonDb));
+    fs.renameSync(tmp, dataFile);
   } catch (err) {
     if (dataFile === DATA_FILE) {
       dataFile = ALT_DATA_FILE;
       console.warn("Tidak bisa menulis di direktori app, fallback ke:", dataFile);
       try {
+        jsonDb.updated_at = new Date().toISOString().replace("T", " ").slice(0, 19);
         fs.writeFileSync(dataFile, JSON.stringify(jsonDb));
       } catch (e2) {
         console.error("Penyimpanan data tidak tersedia:", e2.message);
@@ -55,6 +66,51 @@ function saveJsonDb() {
       console.error("Penyimpanan data tidak tersedia:", err.message);
     }
   }
+}
+
+function exportJson() {
+  if (!jsonDb) loadJsonDb();
+  return JSON.parse(JSON.stringify(jsonDb));
+}
+
+function importJson(raw) {
+  loadJsonDb();
+  if (raw && typeof raw === "object") {
+    jsonDb = { ...defaultState(), ...raw };
+    saveJsonDb();
+  }
+  return jsonDb;
+}
+
+// Gabungkan data dari instance lain (Backup Belmo) dengan data lokal.
+// Aman dijalankan berdampingan: pesan & user disatukan per id, counter di-max.
+function mergeJson(raw) {
+  loadJsonDb();
+  const src = raw && typeof raw === "object" ? raw : {};
+  const byId = (list) =>
+    (list || []).reduce((m, it) => {
+      if (it && it.id != null) m.set(String(it.id), it);
+      return m;
+    }, new Map());
+
+  const users = byId(jsonDb.anonUsers);
+  for (const u of byId(src.anonUsers).values()) users.set(String(u.id), u);
+
+  const msgs = byId(jsonDb.messages);
+  for (const m of byId(src.messages).values()) msgs.set(String(m.id), m);
+
+  jsonDb.anonUsers = [...users.values()];
+  jsonDb.messages = [...msgs.values()].sort((a, b) =>
+    String(a.created_at || "").localeCompare(String(b.created_at || ""))
+  );
+  jsonDb.anonCounter = Math.max(jsonDb.anonCounter || 0, src.anonCounter || 0);
+  jsonDb.seq = {
+    messages: Math.max(jsonDb.seq?.messages || 0, src.seq?.messages || 0),
+  };
+  const stamps = [jsonDb.updated_at, src.updated_at].filter(Boolean).sort().pop();
+  jsonDb.updated_at = stamps || new Date().toISOString().replace("T", " ").slice(0, 19);
+  saveJsonDb();
+  return jsonDb;
 }
 
 function init() {
@@ -178,6 +234,10 @@ const q = {
 module.exports = {
   init,
   migrate,
+  appBase,
+  exportJson,
+  importJson,
+  mergeJson,
   ...q,
   q,
 };

@@ -4,9 +4,19 @@
   "description": "HIDDEN SOCIETY Forums — chat forum anonim realtime (Node.js + Express + Socket.io)",
   "main": "server.js",
   "type": "commonjs",
+  "bin": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "build:exe": "pkg . --targets node18-win-x64 --output build/hidden-society.exe"
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ]
   },
   "engines": {
     "node": ">=18"

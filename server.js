@@ -1,16 +1,32 @@
 require("dotenv").config();
 const fs = require("fs");
+const os = require("os");
 const http = require("http");
 const path = require("path");
 const express = require("express");
 const { Server } = require("socket.io");
 const db = require("./db");
+const { registerBackup, startLocalSync } = require("./sync");
 
-const PORT = process.env.PORT || 8080;
+// Konfigurasi: port + sinkronisasi dari config.json (bisa juga via env).
+function loadConfig() {
+  const cfgPath = path.join(db.appBase(), "config.json");
+  try {
+    return JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  } catch (_) {
+    return {};
+  }
+}
+const config = loadConfig();
+
+const PORT = Number(process.env.PORT || config.port || 8080);
+const SYNC_URL = process.env.SYNC_URL || config.sync?.url || "";
+const SYNC_KEY = process.env.SYNC_KEY || config.sync?.key || "hiddensoc-sync-2026";
+const BACKUP_KEY = process.env.BACKUP_KEY || SYNC_KEY;
 
 const VALID_ROOMS = new Set(["general", "help", "voice"]);
 
-const UPLOADS_DIR = path.join(__dirname, "public", "uploads");
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(db.appBase(), "uploads");
 const ALLOWED_EXT = new Set([
   "png", "jpg", "jpeg", "gif", "webp", "svg", "mp3", "wav", "ogg", "mp4", "webm", "pdf", "txt", "zip",
 ]);
@@ -36,6 +52,7 @@ db.migrate().then(() => {
 
   app.use(express.json({ limit: "12mb" }));
   app.use(express.static(path.join(__dirname, "public")));
+  app.use("/uploads", express.static(UPLOADS_DIR));
 
   // Identitas anonim: pengunjung tidak perlu daftar.
   app.post("/api/anon", (req, res) => {
@@ -285,7 +302,23 @@ db.migrate().then(() => {
     });
   });
 
-  server.listen(PORT, () => {
+  // Backup endpoint (dipakai Belmo sebagai penyimpanan remote).
+  registerBackup(app, BACKUP_KEY);
+
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`HIDDEN SOCIETY Forums jalan di port ${PORT}`);
+    console.log(`Akses lokal : http://localhost:${PORT}`);
+    for (const [name, infos] of Object.entries(os.networkInterfaces())) {
+      for (const info of infos || []) {
+        if (info.family === "IPv4" && !info.internal) {
+          console.log(`Akses jaringan (${name}): http://${info.address}:${PORT}`);
+        }
+      }
+    }
+    if (BACKUP_KEY && SYNC_URL) {
+      startLocalSync({ url: SYNC_URL, key: SYNC_KEY });
+    } else {
+      console.log("[sync] Nonaktif (atur config.json -> sync url+key untuk backup ke Belmo).");
+    }
   });
 });
