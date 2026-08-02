@@ -1626,7 +1626,7 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.btn-primary {
+.modal-actions .btn-primary {
   flex: 1;
 }
 
