@@ -656,7 +656,12 @@
     deafBtn.textContent = "🎧";
     scrBtn.classList.toggle("on", !!localScreenStream);
     scrBtn.textContent = "🖥️";
-    $("#screen-grid").classList.toggle("hidden", !(inVoice && screenVideos.size > 0));
+    const hasScreens = inVoice && screenVideos.size > 0;
+    $("#screen-stage").classList.toggle("hidden", !hasScreens);
+    $("#voice-view").classList.toggle("has-screens", hasScreens);
+    const sc = $("#screen-count");
+    if (sc) sc.textContent = screenVideos.size > 1 ? `(${screenVideos.size})` : "";
+    $("#screen-open-btn").classList.toggle("hidden", !(hasScreens && !viewOpen));
 
     const vmic = $("#voice-mic-btn");
     vmic.classList.toggle("muted", !transmitOn);
@@ -1346,6 +1351,7 @@
     $("#voice-screen-btn").addEventListener("click", toggleScreen);
     $("#voice-back-btn").addEventListener("click", closeVoiceView);
     $("#voice-leave-btn").addEventListener("click", () => { closeVoiceView(); exitVoice(); });
+    $("#screen-open-btn").addEventListener("click", openVoiceView);
     $("#ptt-btn").addEventListener("click", togglePtt);
     const pttBtn = $("#ptt-btn");
     pttBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); pttHold(true); });

@@ -87,8 +87,14 @@
               <span class="conn-dot"></span><span id="voice-conn-text">connected</span>
             </div>
           </div>
+          <div class="screen-stage hidden" id="screen-stage">
+            <div class="screen-stage-head">
+              <span class="screen-stage-dot"></span> Layar Live
+              <span id="screen-count" class="screen-count"></span>
+            </div>
+            <div id="screen-grid" class="screen-grid"></div>
+          </div>
           <div id="voice-tiles" class="voice-tiles"></div>
-          <div id="screen-grid" class="screen-grid hidden"></div>
           <div class="ptt-hint hidden" id="ptt-hint">Mode push-to-talk aktif — tahan tombol <b>🎙️</b> atau tombol <b>V</b> buat ngomong.</div>
           <div class="voice-controls">
             <button class="vc-btn" id="voice-mic-btn" title="Mute/Unmute">🎤</button>
@@ -99,6 +105,10 @@
             <button class="vc-btn leave" id="voice-leave-btn" title="Keluar dari voice">✕ Keluar</button>
           </div>
         </div>
+
+        <button id="screen-open-btn" class="screen-open-btn hidden">
+          <span class="screen-open-dot"></span> Ada layar live — klik buat lihat
+        </button>
 
         <div id="typing-line" class="typing-line hidden"></div>
 

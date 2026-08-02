@@ -835,6 +835,8 @@ body {
 }
 
 .voice-tiles {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 14px;
@@ -963,6 +965,38 @@ body {
   padding: 30px 10px;
   border-radius: 14px;
   border: 1px dashed var(--panel-edge);
+}
+
+.screen-open-btn {
+  margin: 0 16px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(240, 178, 50, 0.4);
+  background: rgba(240, 178, 50, 0.12);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  animation: popIn 0.3s ease;
+  transition: all 0.15s;
+}
+
+.screen-open-btn:hover {
+  background: rgba(240, 178, 50, 0.22);
+  transform: translateY(-1px);
+}
+
+.screen-open-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(240, 178, 50, 0.8);
+  animation: blinkDot 1.2s ease-in-out infinite;
 }
 
 .ptt-hint {
@@ -1443,25 +1477,78 @@ body {
 
 /* ================= Screen share ================= */
 
+.voice-view-header { order: 1; flex-shrink: 0; }
+.screen-stage { order: 2; flex: 1; min-height: 0; }
+.voice-tiles { order: 3; }
+.ptt-hint { order: 4; }
+.voice-controls { order: 5; flex-shrink: 0; }
+
+/* ----- Screen stage (prioritas besar) ----- */
+
+.screen-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: slideDown 0.3s ease;
+}
+
+.screen-stage-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 2px;
+}
+
+.screen-stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 8px rgba(242, 63, 67, 0.8);
+  animation: blinkDot 1.2s ease-in-out infinite;
+}
+
+.screen-count {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .screen-grid {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 10px;
-  max-height: 320px;
-  overflow-y: auto;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--panel-edge);
 }
 
 .screen-tile {
   position: relative;
-  width: 300px;
+  flex: 1 1 380px;
+  max-width: 100%;
   aspect-ratio: 16/9;
   background: #000;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   animation: msgIn 0.3s ease;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(35, 165, 90, 0.25);
   border: 1px solid var(--panel-edge);
+}
+
+.screen-tile:only-child {
+  max-width: 96%;
+  max-height: 92%;
 }
 
 .screen-tile video {
@@ -1494,6 +1581,41 @@ body {
   border-radius: 999px;
   animation: blinkDot 1.4s ease-in-out infinite;
   box-shadow: 0 0 10px rgba(242, 63, 67, 0.6);
+}
+
+/* Saat ada screen, tiles user meringkas jadi strip */
+.voice-view.has-screens .voice-tiles {
+  flex: 0 0 auto;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  max-height: 86px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.voice-view.has-screens .voice-tile {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  min-height: 0;
+}
+
+.voice-view.has-screens .vt-avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+}
+
+.voice-view.has-screens .vt-name {
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-view.has-screens .vt-status,
+.voice-view.has-screens .vt-vol {
+  display: none;
 }
 
 /* ================= Panel member ================= */
