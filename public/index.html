@@ -74,15 +74,30 @@
           Kamu belum join voice — klik <b>General Voice</b> di kolom kiri buat mulai ngobrol.
         </div>
 
-        <div class="voice-stage hidden" id="voice-stage">
-          <div class="voice-banner glow-border">
+        <div class="voice-view hidden" id="voice-view">
+          <div class="voice-view-header glow-border">
             <div class="voice-equalizer" id="voice-eq">
               <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
             </div>
-            <h2 id="voice-stage-title">Voice Connected</h2>
-            <p id="voice-stage-desc">Kamu nyambung di General Voice — ngomong aja!</p>
+            <div class="voice-view-titles">
+              <h2 id="voice-view-title">🔊 General Voice</h2>
+              <p id="voice-stage-desc">Kamu nyambung di General Voice — ngomong aja!</p>
+            </div>
+            <div class="voice-conn" id="voice-conn">
+              <span class="conn-dot"></span><span id="voice-conn-text">connected</span>
+            </div>
           </div>
+          <div id="voice-tiles" class="voice-tiles"></div>
           <div id="screen-grid" class="screen-grid hidden"></div>
+          <div class="ptt-hint hidden" id="ptt-hint">Mode push-to-talk aktif — tahan tombol <b>🎙️</b> atau tombol <b>V</b> buat ngomong.</div>
+          <div class="voice-controls">
+            <button class="vc-btn" id="voice-mic-btn" title="Mute/Unmute">🎤</button>
+            <button class="vc-btn" id="voice-deaf-btn" title="Deafen">🎧</button>
+            <button class="vc-btn" id="voice-screen-btn" title="Share Screen">🖥️</button>
+            <button class="vc-btn ptt" id="ptt-btn" title="Push to Talk (tahan V)">🎙️</button>
+            <button class="vc-btn back" id="voice-back-btn" title="Kembali ke chat (tetap terhubung)">↩ Chat</button>
+            <button class="vc-btn leave" id="voice-leave-btn" title="Keluar dari voice">✕ Keluar</button>
+          </div>
         </div>
 
         <div id="typing-line" class="typing-line hidden"></div>

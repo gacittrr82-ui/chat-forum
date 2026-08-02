@@ -264,6 +264,7 @@
   }
 
   function selectTextChannel(id) {
+    if (voiceMode) closeVoiceView();
     activeText = id;
     const server = currentServer();
     const meta = server.textChannels.find((c) => c.id === id);
@@ -385,18 +386,25 @@
 
   // ---------- Voice ----------
   const peers = new Map();
+  const peerByAnon = new Map(); // anonId -> peer
+  const peerVolumes = new Map(); // anonId -> { volume, muted }
+  const voiceSpeakingMap = new Map(); // anonId -> bool
   const screenVideos = new Map();
   const remoteAudios = new Set();
   let localMicStream = null;
   let localScreenStream = null;
   let micOn = true;
+  let transmitOn = true;
   let deafened = false;
   let inVoice = false;
+  let voiceMode = false;
+  let pttMode = false;
   let speaking = false;
 
   let voiceUsers = [];
   let analyser = null;
   let audioCtx = null;
+  let sfxCtx = null;
 
   function audioElFor(stream) {
     const audio = document.createElement("audio");
@@ -415,7 +423,7 @@
         { urls: "stun:stun1.l.google.com:19302" },
       ],
     });
-    const peer = { socketId, pc, polite, makingOffer: false, isSettingRemoteAnswer: false };
+    const peer = { socketId, pc, polite, makingOffer: false, isSettingRemoteAnswer: false, anonId: null, audioEl: null, restartTimer: null };
     peers.set(socketId, peer);
 
     if (localMicStream) {
@@ -431,14 +439,28 @@
 
     pc.ontrack = (e) => {
       if (e.track.kind === "audio") {
-        audioElFor(new MediaStream([e.track]));
+        const el = audioElFor(new MediaStream([e.track]));
+        peer.audioEl = el;
+        if (peer.anonId != null) {
+          el.dataset.anonId = String(peer.anonId);
+          const rec = peerVolumes.get(peer.anonId) || { volume: 1, muted: false };
+          el.volume = rec.volume;
+          el.muted = deafened || rec.muted;
+        }
       } else if (e.track.kind === "video") {
         addScreenVideo(socketId, e.streams[0] || new MediaStream([e.track]));
       }
     };
 
     pc.onconnectionstatechange = () => {
-      if (["failed", "closed"].includes(pc.connectionState)) closePeer(socketId);
+      if (["failed", "closed"].includes(pc.connectionState)) {
+        closePeer(socketId);
+      } else if (pc.connectionState === "disconnected") {
+        scheduleRestart(peer);
+      } else if (pc.connectionState === "connected") {
+        if (peer.restartTimer) { clearTimeout(peer.restartTimer); peer.restartTimer = null; }
+      }
+      updateVoiceUi();
     };
 
     return peer;
@@ -474,9 +496,12 @@
     }
   }
 
-  async function renegotiate(peer) {
+  async function renegotiate(peer, restart = false) {
     try {
       peer.makingOffer = true;
+      if (restart) {
+        try { peer.pc.restartIce(); } catch (_) {}
+      }
       await peer.pc.setLocalDescription(await peer.pc.createOffer());
       socket.emit("voice:offer", { target: peer.socketId, sdp: peer.pc.localDescription });
     } catch (err) {
@@ -486,13 +511,28 @@
     }
   }
 
+  function scheduleRestart(peer) {
+    if (peer.restartTimer || !inVoice || !peer.pc) return;
+    peer.restartTimer = setTimeout(async () => {
+      peer.restartTimer = null;
+      if (!inVoice || !peer.pc) return;
+      if (["disconnected", "failed"].includes(peer.pc.connectionState)) {
+        try {
+          await renegotiate(peer, true);
+        } catch (_) {}
+      }
+    }, 3000);
+  }
+
   function closePeer(socketId) {
     const peer = peers.get(socketId);
     if (peer) {
       try {
+        if (peer.restartTimer) { clearTimeout(peer.restartTimer); peer.restartTimer = null; }
         peer.pc.close();
       } catch (_) {}
       peers.delete(socketId);
+      if (peer.anonId != null) peerByAnon.delete(peer.anonId);
     }
     const video = screenVideos.get(socketId);
     if (video) {
@@ -554,16 +594,35 @@
   }
 
   function setVoiceSpeaking(id, isSpeaking) {
+    if (isSpeaking) voiceSpeakingMap.set(id, true);
+    else voiceSpeakingMap.delete(id);
     const row = document.getElementById("vu-" + id);
     if (row) row.classList.toggle("speaking", isSpeaking);
+    const tile = document.getElementById("vt-" + id);
+    if (tile) {
+      tile.classList.toggle("speaking", isSpeaking);
+      const av = tile.querySelector(".vt-avatar");
+      if (av) av.classList.toggle("speaking-ring", isSpeaking);
+    }
     if (me && Number(id) === me.id) {
       speaking = isSpeaking;
       $("#user-avatar").classList.toggle("speaking-ring", isSpeaking);
     }
   }
 
+  function isVoiceView() {
+    return inVoice && voiceMode;
+  }
+
   function updateVoiceUi() {
-    $("#voice-stage").classList.toggle("hidden", !inVoice);
+    const viewOpen = isVoiceView();
+    $("#voice-view").classList.toggle("hidden", !viewOpen);
+    $("#messages").classList.toggle("hidden", viewOpen);
+    $("#chat-form").classList.toggle("hidden", viewOpen);
+    $("#composer-extras").classList.toggle("hidden", viewOpen);
+    $("#typing-line").classList.toggle("hidden", viewOpen);
+    $("#messages-empty").classList.toggle("hidden", viewOpen || msgCache.size > 0);
+
     $("#voice-join-banner").classList.toggle(
       "hidden",
       !(currentServer().voiceChannels.length > 0 && !inVoice)
@@ -577,8 +636,8 @@
     const micBtn = $("#mic-btn");
     const deafBtn = $("#deafen-btn");
     const scrBtn = $("#screen-btn");
-    micBtn.classList.toggle("on", micOn && !deafened);
-    micBtn.classList.toggle("muted", !micOn || deafened);
+    micBtn.classList.toggle("on", transmitOn);
+    micBtn.classList.toggle("muted", !transmitOn);
     micBtn.textContent = "🎤";
     deafBtn.classList.toggle("on", deafened);
     deafBtn.textContent = "🎧";
@@ -586,11 +645,138 @@
     scrBtn.textContent = "🖥️";
     $("#screen-grid").classList.toggle("hidden", !(inVoice && localScreenStream));
 
+    const vmic = $("#voice-mic-btn");
+    vmic.classList.toggle("muted", !transmitOn);
+    vmic.textContent = transmitOn ? "🎤" : "🔇";
+    $("#voice-deaf-btn").classList.toggle("on", deafened);
+    $("#voice-screen-btn").classList.toggle("on", !!localScreenStream);
+    $("#ptt-btn").classList.toggle("on", pttMode);
+    $("#ptt-hint").classList.toggle("hidden", !pttMode);
+
+    if (viewOpen) {
+      const vc = currentServer().voiceChannels[0];
+      $("#pane-title").textContent = "🔊 " + (vc ? vc.label : "General Voice");
+      $("#pane-desc").textContent = currentServer().label;
+    } else {
+      const server = currentServer();
+      const meta = server.textChannels.find((c) => c.id === activeText);
+      $("#pane-title").textContent = "# " + activeText;
+      $("#pane-desc").textContent = meta ? meta.desc : "";
+    }
+
+    const bad = [...peers.values()].some((p) => ["disconnected", "failed"].includes(p.pc.connectionState));
+    const connEl = $("#voice-conn");
+    if (connEl) connEl.classList.toggle("bad", bad);
+    const connText = $("#voice-conn-text");
+    if (connText) connText.textContent = bad ? "menyambung ulang..." : "connected";
+
+    $("#voice-eq").classList.toggle("live", inVoice);
+
     if (!inVoice) return;
     const desc = $("#voice-stage-desc");
     desc.textContent = voiceUsers.length > 1
       ? `${voiceUsers.length} orang di voice — ngomong aja!`
       : "Kamu sendirian di voice. Ajak temen buat nyambung!";
+
+    if (viewOpen) renderVoiceTiles();
+  }
+
+  function openVoiceView() {
+    voiceMode = true;
+    renderVoiceTiles();
+    updateVoiceUi();
+  }
+
+  function closeVoiceView() {
+    voiceMode = false;
+    updateVoiceUi();
+  }
+
+  function renderVoiceTiles() {
+    const el = document.getElementById("voice-tiles");
+    if (!el) return;
+    el.innerHTML = "";
+    if (!voiceUsers.length) {
+      const div = document.createElement("div");
+      div.className = "voice-empty-tile";
+      div.textContent = "Belum ada orang lain di voice. Ajak temen buat nyambung!";
+      el.appendChild(div);
+      return;
+    }
+    const sorted = [...voiceUsers].sort((a, b) => (a.id === (me && me.id) ? -1 : 0));
+    for (const u of sorted) {
+      const isMe = me && u.id === me.id;
+      const tile = document.createElement("div");
+      const sp = voiceSpeakingMap.get(u.id);
+      tile.className = "voice-tile" + (isMe ? " me" : "") + (sp ? " speaking" : "");
+      tile.id = "vt-" + u.id;
+      const rec = peerVolumes.get(u.id) || { volume: 1, muted: false };
+      const volCtl = isMe ? "" : `
+        <div class="vt-vol">
+          <button class="vt-mute" data-anon="${u.id}" title="${rec.muted ? "Unmute" : "Mute"}">${rec.muted ? "🔇" : "🔊"}</button>
+          <input type="range" class="vt-range" data-anon="${u.id}" min="0" max="100" value="${Math.round(rec.volume * 100)}" />
+        </div>`;
+      tile.innerHTML = `
+        <div class="vt-avatar${sp ? " speaking-ring" : ""}" style="background:${avatarColor(u.id)}">${escapeHtml(avatarText(u.name))}</div>
+        <div class="vt-name">${escapeHtml(u.name)}${isMe ? " <em>(kamu)</em>" : ""}</div>
+        <div class="vt-status">${u.deafened ? "🔇 Deafen" : u.micOn ? "🎤 Aktif" : "🔇 Muted"}</div>
+        ${volCtl}`;
+      el.appendChild(tile);
+    }
+  }
+
+  function setUserVolume(anonId, volume) {
+    const rec = peerVolumes.get(anonId) || { volume: 1, muted: false };
+    rec.volume = Math.max(0, Math.min(1, volume));
+    peerVolumes.set(anonId, rec);
+    const peer = peerByAnon.get(anonId);
+    if (peer && peer.audioEl) {
+      peer.audioEl.volume = rec.volume;
+      peer.audioEl.muted = deafened || rec.muted;
+    }
+  }
+
+  function toggleUserMute(anonId) {
+    const rec = peerVolumes.get(anonId) || { volume: 1, muted: false };
+    rec.muted = !rec.muted;
+    peerVolumes.set(anonId, rec);
+    const peer = peerByAnon.get(anonId);
+    if (peer && peer.audioEl) peer.audioEl.muted = deafened || rec.muted;
+    renderVoiceTiles();
+  }
+
+  function applyMicState(holding = false) {
+    transmitOn = micOn && !deafened && (!pttMode || holding);
+    if (localMicStream) localMicStream.getAudioTracks().forEach((t) => (t.enabled = transmitOn));
+    socket.emit("voice:state", { micOn: transmitOn, deafened });
+    updateVoiceUi();
+  }
+
+  function playSfx(kind) {
+    let ctx = audioCtx || sfxCtx;
+    if (!ctx) {
+      try { sfxCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) {}
+      ctx = sfxCtx;
+    }
+    if (!ctx) return;
+    if (ctx.state === "suspended") { try { ctx.resume(); } catch (_) {} }
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = "sine";
+    osc.connect(g);
+    g.connect(ctx.destination);
+    if (kind === "join") {
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.setValueAtTime(660, now + 0.08);
+    } else {
+      osc.frequency.setValueAtTime(660, now);
+      osc.frequency.setValueAtTime(330, now + 0.08);
+    }
+    g.gain.setValueAtTime(0.05, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+    osc.start(now);
+    osc.stop(now + 0.3);
   }
 
   function startSpeakingWatch() {
@@ -598,6 +784,7 @@
     const data = new Uint8Array(analyser.frequencyBinCount);
     let was = false;
     let silentFor = 0;
+    let baseline = 0;
     const loop = () => {
       if (!inVoice || !analyser) return;
       analyser.getByteFrequencyData(data);
@@ -607,7 +794,8 @@
       const level = Math.min(1, avg / 55);
       document.documentElement.style.setProperty("--mic-level", level.toFixed(3));
       let now = false;
-      if (avg > 4) {
+      const thresh = Math.max(3.5, baseline * 1.9);
+      if (avg > thresh) {
         now = true;
         silentFor = 0;
       } else if (was) {
@@ -615,6 +803,7 @@
         if (silentFor > 8) now = false;
         else now = true;
       }
+      if (!now && avg < 2.5) baseline += (avg - baseline) * 0.03;
       if (now !== was) {
         was = now;
         socket.emit("voice:speaking", { speaking: now });
@@ -630,9 +819,17 @@
     inVoice = true;
     if (!localMicStream) {
       try {
-        localMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        localMicStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
         localMicStream.getAudioTracks().forEach((t) => (t.enabled = micOn && !deafened));
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") { try { audioCtx.resume(); } catch (_) {} }
         const src = audioCtx.createMediaStreamSource(localMicStream);
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = 512;
@@ -645,14 +842,16 @@
       }
     }
     socket.emit("voice:join");
-    socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
-    $("#voice-eq").classList.add("live");
+    transmitOn = micOn && !deafened && !pttMode;
+    socket.emit("voice:state", { micOn: transmitOn, deafened });
+    playSfx("join");
     updateVoiceUi();
   }
 
   function exitVoice() {
     if (!inVoice) return;
     inVoice = false;
+    voiceMode = false;
     socket.emit("voice:leave");
     $("#voice-eq").classList.remove("live");
     document.documentElement.style.setProperty("--mic-level", "0.12");
@@ -662,6 +861,8 @@
       $("#user-avatar").classList.remove("speaking-ring");
     }
     for (const sid of Array.from(peers.keys())) closePeer(sid);
+    peerByAnon.clear();
+    voiceSpeakingMap.clear();
     for (const a of remoteAudios) {
       try {
         a.srcObject = null;
@@ -673,28 +874,55 @@
     grid.innerHTML = "";
     screenVideos.clear();
     voiceUsers = [];
+    if (localMicStream) {
+      localMicStream.getTracks().forEach((t) => t.stop());
+      localMicStream = null;
+    }
+    if (audioCtx) {
+      try { audioCtx.close(); } catch (_) {}
+      audioCtx = null;
+      analyser = null;
+    }
+    playSfx("leave");
     renderVoiceUsers();
     updateVoiceUi();
   }
 
-  function toggleVoice() {
-    if (inVoice) exitVoice();
-    else enterVoice();
-  }
-
   function toggleMic() {
+    if (pttMode) setPtt(false);
     micOn = !micOn;
-    if (localMicStream) localMicStream.getAudioTracks().forEach((t) => (t.enabled = micOn && !deafened));
-    socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
-    updateVoiceUi();
+    applyMicState();
   }
 
   function toggleDeafen() {
     deafened = !deafened;
-    for (const a of remoteAudios) a.muted = deafened;
-    if (localMicStream) localMicStream.getAudioTracks().forEach((t) => (t.enabled = micOn && !deafened));
-    socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
-    updateVoiceUi();
+    for (const a of remoteAudios) {
+      const rec = a.dataset && a.dataset.anonId != null
+        ? peerVolumes.get(Number(a.dataset.anonId)) || { volume: 1, muted: false }
+        : { volume: 1, muted: false };
+      a.muted = deafened || rec.muted;
+    }
+    applyMicState();
+  }
+
+  function setPtt(v) {
+    pttMode = v;
+    $("#ptt-btn").classList.toggle("on", pttMode);
+    $("#ptt-hint").classList.toggle("hidden", !pttMode);
+    applyMicState();
+  }
+
+  function togglePtt() {
+    setPtt(!pttMode);
+  }
+
+  function pttHold(active) {
+    if (!pttMode || !inVoice) return;
+    applyMicState(active);
+  }
+
+  function pttRelease() {
+    pttHold(false);
   }
 
   async function toggleScreen() {
@@ -964,8 +1192,13 @@
       $("#conn-status").textContent = "online";
       if (me) socket.emit("rooms:join", currentRoom());
       if (inVoice) {
+        for (const sid of Array.from(peers.keys())) closePeer(sid);
+        peerByAnon.clear();
+        voiceSpeakingMap.clear();
         socket.emit("voice:join");
-        socket.emit("voice:state", { micOn: micOn && !deafened, deafened });
+        transmitOn = micOn && !deafened && !pttMode;
+        socket.emit("voice:state", { micOn: transmitOn, deafened });
+        updateVoiceUi();
       }
     });
 
@@ -1024,15 +1257,24 @@
     socket.on("voice:users", (list) => {
       voiceUsers = list;
       renderVoiceUsers();
+      if (isVoiceView()) renderVoiceTiles();
       updateVoiceUi();
     });
 
     socket.on("voice:speaking", ({ id, speaking: sp }) => setVoiceSpeaking(id, sp));
 
-    socket.on("voice:peer-joined", ({ from }) => {
+    socket.on("voice:peer-joined", ({ from, anon }) => {
       if (!inVoice) return;
       const peer = ensurePeer(from, false);
-      if (peer && !peer.pc.remoteDescription) renegotiate(peer);
+      if (peer) {
+        if (anon) {
+          peer.anonId = anon.id;
+          peerByAnon.set(anon.id, peer);
+          if (peer.audioEl && peer.audioEl.dataset) peer.audioEl.dataset.anonId = String(anon.id);
+        }
+        if (!peer.pc.remoteDescription) renegotiate(peer);
+        if (isVoiceView()) renderVoiceTiles();
+      }
     });
 
     socket.on("voice:peer-left", ({ from }) => closePeer(from));
@@ -1060,19 +1302,52 @@
     // Bind UI
     $$(".rail-btn").forEach((b) => b.addEventListener("click", () => setServer(b.dataset.server)));
 
-    $("#channels-body").addEventListener("click", (e) => {
+    $("#channels-body").addEventListener("click", async (e) => {
       const channelRow = e.target.closest(".channel[data-channel]");
       if (channelRow) {
         selectTextChannel(channelRow.dataset.channel);
         return;
       }
       const vrow = e.target.closest("#voice-channel-item");
-      if (vrow) toggleVoice();
+      if (vrow) {
+        if (!inVoice) await enterVoice();
+        openVoiceView();
+      }
     });
 
     $("#mic-btn").addEventListener("click", toggleMic);
     $("#deafen-btn").addEventListener("click", toggleDeafen);
     $("#screen-btn").addEventListener("click", toggleScreen);
+
+    $("#voice-mic-btn").addEventListener("click", toggleMic);
+    $("#voice-deaf-btn").addEventListener("click", toggleDeafen);
+    $("#voice-screen-btn").addEventListener("click", toggleScreen);
+    $("#voice-back-btn").addEventListener("click", closeVoiceView);
+    $("#voice-leave-btn").addEventListener("click", () => { closeVoiceView(); exitVoice(); });
+    $("#ptt-btn").addEventListener("click", togglePtt);
+    const pttBtn = $("#ptt-btn");
+    pttBtn.addEventListener("pointerdown", (e) => { e.preventDefault(); pttHold(true); });
+    pttBtn.addEventListener("pointerup", pttRelease);
+    pttBtn.addEventListener("pointercancel", pttRelease);
+    pttBtn.addEventListener("pointerleave", pttRelease);
+    pttBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    $("#voice-tiles").addEventListener("input", (e) => {
+      const r = e.target.closest(".vt-range");
+      if (r) setUserVolume(Number(r.dataset.anon), Number(r.value) / 100);
+    });
+    $("#voice-tiles").addEventListener("click", (e) => {
+      const b = e.target.closest(".vt-mute");
+      if (b) toggleUserMute(Number(b.dataset.anon));
+    });
+
+    const isTypingTarget = (t) => t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "KeyV" && pttMode && inVoice && !isTypingTarget(e.target)) pttHold(true);
+    });
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "KeyV") pttHold(false);
+    });
 
     // Profil modal
     $("#user-avatar").addEventListener("click", openProfile);
