@@ -24,13 +24,12 @@
   <div id="app" class="hidden">
     <div class="layout">
 
-      <!-- ======== Rail ======== -->
+      <!-- ======== Rail (server list ala Discord) ======== -->
       <nav class="rail">
         <div class="rail-brand">🕶️</div>
         <div class="rail-modules">
-          <button class="rail-btn" data-module="chat" title="Chat Forum">💬<span class="tip">Chat Forum</span></button>
-          <button class="rail-btn" data-module="help" title="Help Forum">🆘<span class="tip">Help Forum</span></button>
-          <button class="rail-btn" data-module="voice" title="Voice">🎙️<span class="tip">Voice</span></button>
+          <button class="rail-btn" data-server="chat" title="Chat Forum">💬<span class="tip">Chat Forum</span></button>
+          <button class="rail-btn" data-server="helpvoice" title="Help & Voice">🆘<span class="tip">Help & Voice</span></button>
         </div>
       </nav>
 
@@ -40,23 +39,8 @@
           <h2 id="channels-title">Chat Forum</h2>
         </div>
 
-        <div class="channels-body">
-          <div class="channel-section" id="channel-section">
-            <div class="channel active" id="main-channel">
-              <span class="channel-hash">#</span>
-              <span id="channel-name">general</span>
-            </div>
-          </div>
-
-          <div class="channel-section hidden" id="voice-section">
-            <div class="channel-heading">Voice Channel</div>
-            <div class="voice-channel-row glow-border" id="voice-channel-item">
-              <span class="vc-icon">🔊</span>
-              <span class="vc-label">General Voice</span>
-              <span class="vc-status hidden" id="voice-connected-pill">Connected</span>
-            </div>
-            <div class="voice-users" id="voice-users"></div>
-          </div>
+        <div class="channels-body" id="channels-body">
+          <!-- diisi oleh JS: text channels + voice channels -->
         </div>
 
         <div class="channels-footer">

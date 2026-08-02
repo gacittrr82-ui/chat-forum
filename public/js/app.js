@@ -16,13 +16,34 @@
   let me = null;
   let socket = null;
 
-  let activeModule = "chat";
-
-  const MODULES = {
-    chat: { room: "general", channel: "general", title: "Chat Forum", desc: "Obrolan bebas semua topik" },
-    help: { room: "help", channel: "help", title: "Help Forum", desc: "Tanya jawab & bantuan" },
-    voice: { room: "voice", channel: "voice", title: "Voice", desc: "Ngobrol pakai mic & share screen" },
+  // Model Discord: 1 server = kumpulan text channel + voice channel
+  const SERVERS = {
+    chat: {
+      id: "chat",
+      label: "Chat Forum",
+      icon: "💬",
+      textChannels: [{ id: "general", label: "general", desc: "Obrolan bebas semua topik" }],
+      voiceChannels: [],
+    },
+    helpvoice: {
+      id: "helpvoice",
+      label: "Help & Voice",
+      icon: "🆘",
+      textChannels: [{ id: "help", label: "bantuan", desc: "Tanya jawab & bantuan" }],
+      voiceChannels: [{ id: "voice", label: "General Voice" }],
+    },
   };
+
+  let activeServerId = "chat";
+  let activeText = "general";
+
+  function currentRoom() {
+    return activeText;
+  }
+
+  function currentServer() {
+    return SERVERS[activeServerId];
+  }
 
   // ---------- Util ----------
   function escapeHtml(str) {
@@ -69,10 +90,6 @@
     return div;
   }
 
-  function currentRoom() {
-    return MODULES[activeModule].room;
-  }
-
   function loadHistory(room) {
     const listEl = $("#messages");
     fetch(`/api/history?room=${encodeURIComponent(room)}&limit=50`)
@@ -103,39 +120,87 @@
     }
   }
 
-  // ---------- Modul ----------
-  function setModule(mod) {
-    activeModule = mod;
-    const info = MODULES[mod];
-    const isVoice = mod === "voice";
+  // ---------- Channel list (render per server) ----------
+  function renderChannels() {
+    const server = currentServer();
+    const body = $("#channels-body");
+    body.innerHTML = "";
+    $("#channels-title").textContent = server.label;
 
-    $$(".rail-btn").forEach((b) => b.classList.toggle("active", b.dataset.module === mod));
+    if (server.textChannels.length) {
+      const head = document.createElement("div");
+      head.className = "channel-heading";
+      head.textContent = "Text Channels";
+      body.appendChild(head);
 
-    $("#channel-section").classList.toggle("hidden", isVoice);
-    $("#voice-section").classList.toggle("hidden", !isVoice);
-    $("#channels-title").textContent = info.title;
-    $("#channel-name").textContent = info.channel;
+      for (const ch of server.textChannels) {
+        const row = document.createElement("div");
+        row.className = "channel" + (ch.id === activeText ? " active" : "");
+        row.dataset.channel = ch.id;
+        row.innerHTML = `<span class="channel-hash">#</span><span>${escapeHtml(ch.label)}</span>`;
+        body.appendChild(row);
+      }
+    }
 
-    $("#pane-title").textContent = isVoice ? "Voice" : "# " + info.channel;
-    $("#pane-desc").textContent = info.desc;
-    $("#chat-text").placeholder = `Ketik ke # ${info.channel}...`;
+    if (server.voiceChannels.length) {
+      const head = document.createElement("div");
+      head.className = "channel-heading";
+      head.textContent = "Voice Channels";
+      body.appendChild(head);
+
+      const vrow = document.createElement("div");
+      vrow.className = "voice-channel-row glow-border" + (inVoice ? " joined" : "");
+      vrow.id = "voice-channel-item";
+      vrow.innerHTML = `
+        <span class="vc-icon">🔊</span>
+        <span class="vc-label">${escapeHtml(server.voiceChannels[0].label)}</span>
+        <span class="vc-status hidden" id="voice-connected-pill">Connected</span>`;
+      body.appendChild(vrow);
+
+      const vu = document.createElement("div");
+      vu.className = "voice-users";
+      vu.id = "voice-users";
+      body.appendChild(vu);
+    }
+
+    renderVoiceUsers();
+    updateVoiceUi();
+  }
+
+  function setServer(id) {
+    const server = SERVERS[id];
+    if (!server) return;
+    activeServerId = id;
+    $$(".rail-btn").forEach((b) => b.classList.toggle("active", b.dataset.server === id));
+
+    exitVoice();
+
+    const still = server.textChannels.find((ch) => ch.id === activeText);
+    activeText = still ? still.id : server.textChannels[0].id;
+    renderChannels();
+    selectTextChannel(activeText);
+  }
+
+  function selectTextChannel(id) {
+    activeText = id;
+    const server = currentServer();
+    const meta = server.textChannels.find((c) => c.id === id);
+    $("#pane-title").textContent = "# " + id;
+    $("#pane-desc").textContent = meta ? meta.desc : "";
+    $("#chat-text").placeholder = `Ketik ke # ${id}...`;
+
+    $$(".channel[data-channel]").forEach((r) => r.classList.toggle("active", r.dataset.channel === id));
 
     const msgs = $("#messages");
     msgs.classList.remove("fade");
     void msgs.offsetWidth;
     msgs.classList.add("fade");
 
-    if (isVoice) {
-      updateVoiceUi();
-    } else {
-      exitVoice();
-    }
-
-    socket.emit("rooms:join", info.room);
-    loadHistory(info.room);
+    socket.emit("rooms:join", id);
+    loadHistory(id);
   }
 
-  // ---------- Voice (ala Discord: klik channel = join/leave) ----------
+  // ---------- Voice (WebRTC mesh) ----------
 
   const peers = new Map();
   const screenVideos = new Map();
@@ -283,7 +348,8 @@
 
   // --- UI voice ---
   function renderVoiceUsers() {
-    const el = $("#voice-users");
+    const el = document.getElementById("voice-users");
+    if (!el) return;
     el.innerHTML = "";
     const sorted = [...voiceUsers].sort((a, b) => (a.id === (me && me.id) ? -1 : 0));
     for (const u of sorted) {
@@ -316,11 +382,16 @@
   }
 
   function updateVoiceUi() {
-    const isVoice = activeModule === "voice";
-    $("#voice-stage").classList.toggle("hidden", !(isVoice && inVoice));
-    $("#voice-join-banner").classList.toggle("hidden", !(isVoice && !inVoice));
-    $("#voice-connected-pill").classList.toggle("hidden", !(isVoice && inVoice));
-    $("#voice-channel-item").classList.toggle("joined", inVoice);
+    $("#voice-stage").classList.toggle("hidden", !inVoice);
+    $("#voice-join-banner").classList.toggle(
+      "hidden",
+      !(currentServer().voiceChannels.length > 0 && !inVoice)
+    );
+
+    const pill = document.getElementById("voice-connected-pill");
+    if (pill) pill.classList.toggle("hidden", !inVoice);
+    const vrow = document.getElementById("voice-channel-item");
+    if (vrow) vrow.classList.toggle("joined", inVoice);
 
     const micBtn = $("#mic-btn");
     const deafBtn = $("#deafen-btn");
@@ -334,7 +405,7 @@
     scrBtn.textContent = "🖥️";
     $("#screen-grid").classList.toggle("hidden", !(inVoice && localScreenStream));
 
-    if (!isVoice) return;
+    if (!inVoice) return;
     const desc = $("#voice-stage-desc");
     desc.textContent = voiceUsers.length > 1
       ? `${voiceUsers.length} orang di voice — ngomong aja!`
@@ -346,7 +417,6 @@
     const data = new Uint8Array(analyser.frequencyBinCount);
     let was = false;
     let silentFor = 0;
-    const eq = $("#voice-eq");
     const loop = () => {
       if (!inVoice || !analyser) return;
       analyser.getByteFrequencyData(data);
@@ -521,7 +591,6 @@
 
   // ---------- Effects (partikel, cursor glow, ripple) ----------
   function initEffects() {
-    // Partikel mengambang
     const host = $("#particles");
     for (let i = 0; i < 26; i++) {
       const p = document.createElement("i");
@@ -537,7 +606,6 @@
       host.appendChild(p);
     }
 
-    // Cursor glow (skip di layar sentuh)
     const hasFine = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
     if (!hasFine) return;
     const cursor = $("#cursor-fx");
@@ -555,7 +623,6 @@
       requestAnimationFrame(follow);
     })();
 
-    // Ripple di tombol
     document.addEventListener("pointerdown", (e) => {
       const el = e.target.closest("button, .voice-channel-row, .channel");
       if (!el) return;
@@ -673,16 +740,25 @@
     });
 
     // Bind UI
-    $$(".rail-btn").forEach((b) => b.addEventListener("click", () => setModule(b.dataset.module)));
-    $("#voice-channel-item").addEventListener("click", toggleVoice);
+    $$(".rail-btn").forEach((b) => b.addEventListener("click", () => setServer(b.dataset.server)));
+
+    $("#channels-body").addEventListener("click", (e) => {
+      const channelRow = e.target.closest(".channel[data-channel]");
+      if (channelRow) {
+        selectTextChannel(channelRow.dataset.channel);
+        return;
+      }
+      const vrow = e.target.closest("#voice-channel-item");
+      if (vrow) toggleVoice();
+    });
+
     $("#mic-btn").addEventListener("click", toggleMic);
     $("#deafen-btn").addEventListener("click", toggleDeafen);
     $("#screen-btn").addEventListener("click", toggleScreen);
 
     bindChatForm();
-    updateVoiceUi();
     initEffects();
-    setModule("chat");
+    setServer("chat");
 
     $("#loading").classList.add("hidden");
     $("#app").classList.remove("hidden");
