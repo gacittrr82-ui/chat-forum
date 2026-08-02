@@ -1,4 +1,5 @@
 require("dotenv").config();
+const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const express = require("express");
@@ -7,19 +8,23 @@ const db = require("./db");
 
 const PORT = process.env.PORT || 8080;
 
-// Room chat forum: satu ruang aja
-const FORUM_ROOMS = [
-  { id: "general", label: "Chat Forum", emoji: "💬", desc: "Obrolan bebas semua topik" },
-];
-
-// Semua room yang valid (chat forum + help + voice)
 const VALID_ROOMS = new Set(["general", "help", "voice"]);
 
-const MODULES = [
-  { id: "chat", label: "Chat Forum", emoji: "💬" },
-  { id: "help", label: "Help Forum", emoji: "🆘" },
-  { id: "voice", label: "Voice", emoji: "🎙️" },
-];
+const UPLOADS_DIR = path.join(__dirname, "public", "uploads");
+const ALLOWED_EXT = new Set([
+  "png", "jpg", "jpeg", "gif", "webp", "svg", "mp3", "wav", "ogg", "mp4", "webm", "pdf", "txt", "zip",
+]);
+
+// Deteksi akses dari localhost -> khusus pemilik (owner)
+function isLocalIp(addr) {
+  if (!addr) return false;
+  return addr === "::1" || addr === "::ffff:127.0.0.1" || addr.startsWith("127.") || addr === "localhost";
+}
+
+function applyOwner(anon, local) {
+  if (!local) return anon;
+  return { ...anon, name: "ANONIM-666", role: "owner" };
+}
 
 db.init();
 db.migrate().then(() => {
@@ -27,17 +32,19 @@ db.migrate().then(() => {
   const server = http.createServer(app);
   const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-  app.use(express.json());
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+  app.use(express.json({ limit: "12mb" }));
   app.use(express.static(path.join(__dirname, "public")));
 
   // Identitas anonim: pengunjung tidak perlu daftar.
-  // Nomor mengikuti urutan pertama kali perangkat masuk.
   app.post("/api/anon", (req, res) => {
     try {
       const token = String((req.body || {}).deviceToken || "");
       if (token.length < 8 || token.length > 64)
         return res.status(400).json({ error: "Token tidak valid." });
-      const anon = db.q.getOrCreateAnon(token);
+      const local = isLocalIp(req.ip || req.socket?.remoteAddress);
+      const anon = applyOwner(db.q.getOrCreateAnon(token), local);
       res.json({ anon });
     } catch (err) {
       console.error(err);
@@ -45,8 +52,28 @@ db.migrate().then(() => {
     }
   });
 
-  app.get("/api/rooms", (req, res) => {
-    res.json({ rooms: FORUM_ROOMS });
+  // Upload file (base64 via JSON, tanpa dependensi tambahan)
+  app.post("/api/upload", (req, res) => {
+    try {
+      const body = req.body || {};
+      const name = String(body.name || "").slice(0, 120);
+      const b64 = String(body.data || "");
+      if (!name || !b64) return res.status(400).json({ error: "File tidak valid." });
+      const size = Math.round((b64.length * 3) / 4);
+      if (size > 8 * 1024 * 1024)
+        return res.status(413).json({ error: "File terlalu besar (maks 8MB)." });
+
+      let ext = path.extname(name).toLowerCase().replace(".", "");
+      if (!ALLOWED_EXT.has(ext)) ext = "dat";
+      const safeName = "f_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8) + "." + ext;
+      fs.writeFileSync(path.join(UPLOADS_DIR, safeName), Buffer.from(b64, "base64"));
+
+      const type = String(body.type || "application/octet-stream").slice(0, 80);
+      res.json({ url: "/uploads/" + safeName, name, size, type });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Gagal menyimpan file." });
+    }
   });
 
   app.get("/api/history", async (req, res) => {
@@ -63,12 +90,14 @@ db.migrate().then(() => {
     }
   });
 
-  // ---------- Presence (siapa yang online) ----------
+  // ---------- Presence ----------
 
-  const presence = new Map(); // anonId -> { id, name, count }
+  const presence = new Map(); // anonId -> { id, name, role, color, avatar_emoji, count }
 
   function broadcastPresence() {
-    const list = [...presence.values()].map(({ id, name }) => ({ id, name }));
+    const list = [...presence.values()].map(({ id, name, role, color, avatar_emoji }) => ({
+      id, name, role, color, avatar_emoji,
+    }));
     io.emit("presence:update", list);
   }
 
@@ -78,7 +107,10 @@ db.migrate().then(() => {
     const token = socket.handshake.auth?.deviceToken;
     if (!token || token.length < 8) return next(new Error("no_token"));
     try {
-      const anon = db.q.getAnonByToken(token) || db.q.getOrCreateAnon(token);
+      const local = isLocalIp(socket.handshake.address);
+      const anon = applyOwner(db.q.getAnonByToken(token) || db.q.getOrCreateAnon(token), local);
+      socket.data.token = token;
+      socket.data.local = local;
       socket.data.anon = anon;
       next();
     } catch (err) {
@@ -90,8 +122,11 @@ db.migrate().then(() => {
 
   io.on("connection", (socket) => {
     const anon = socket.data.anon;
-    const prev = presence.get(anon.id) || { id: anon.id, name: anon.name, count: 0 };
+    const prev = presence.get(anon.id) || { id: anon.id, name: anon.name, role: anon.role, color: anon.color, avatar_emoji: anon.avatar_emoji, count: 0 };
     prev.count += 1;
+    prev.name = anon.name;
+    prev.color = anon.color;
+    prev.avatar_emoji = anon.avatar_emoji;
     presence.set(anon.id, prev);
     broadcastPresence();
 
@@ -108,7 +143,7 @@ db.migrate().then(() => {
       const room = String(payload?.room || "general");
       if (!VALID_ROOMS.has(room)) return;
       const text = String(payload?.text || "").trim().slice(0, 2000);
-      if (!text) return;
+      if (!text && !payload?.attachment) return;
 
       const key = socket.id;
       const nowT = Date.now();
@@ -117,7 +152,14 @@ db.migrate().then(() => {
       rate.set(key, nowT);
 
       try {
-        const msg = await db.q.addMessage(room, anon.id, anon.name, text);
+        const msg = await db.q.addMessage(room, anon.id, anon.name, text, {
+          reply_to: payload?.reply_to ? Number(payload.reply_to) : null,
+          mentions: Array.isArray(payload?.mentions) ? payload.mentions.slice(0, 30) : [],
+          attachment: payload?.attachment || null,
+          color: anon.color || null,
+          avatar_emoji: anon.avatar_emoji || null,
+          role: anon.role || null,
+        });
         io.to(room).emit("message:new", msg);
       } catch (err) {
         console.error(err);
@@ -130,7 +172,52 @@ db.migrate().then(() => {
       socket.broadcast.to(room).emit("typing", { name: anon.name, room });
     });
 
-    // ---------- Voice (mic + share screen, tanpa kamera) ----------
+    // ---------- Profil ----------
+    socket.on("profile:update", (profile) => {
+      const updated = db.q.updateProfile(socket.data.token, profile);
+      if (!updated) return;
+      socket.data.anon = applyOwner(updated, socket.data.local);
+      const p = presence.get(socket.data.anon.id);
+      if (p) {
+        p.name = socket.data.anon.name;
+        p.color = socket.data.anon.color;
+        p.avatar_emoji = socket.data.anon.avatar_emoji;
+        presence.set(p.id, p);
+      }
+      socket.emit("identity", socket.data.anon);
+      broadcastPresence();
+    });
+
+    // ---------- Reaksi emoji ----------
+    socket.on("reaction:add", (data) => {
+      const msg = db.q.findMessage(data?.messageId);
+      if (!msg) return;
+      const emoji = String(data?.emoji || "").slice(0, 8);
+      if (!emoji) return;
+      const reactions = db.q.addReaction(msg.id, emoji, anon.id);
+      io.to(msg.room).emit("reaction:update", { id: msg.id, reactions });
+    });
+
+    socket.on("reaction:remove", (data) => {
+      const msg = db.q.findMessage(data?.messageId);
+      if (!msg) return;
+      const emoji = String(data?.emoji || "").slice(0, 8);
+      if (!emoji) return;
+      const reactions = db.q.removeReaction(msg.id, emoji, anon.id);
+      io.to(msg.room).emit("reaction:update", { id: msg.id, reactions });
+    });
+
+    // ---------- Hapus pesan ----------
+    socket.on("message:delete", (data) => {
+      const msg = db.q.findMessage(data?.messageId);
+      if (!msg) return;
+      const isOwner = anon.role === "owner";
+      if (db.q.deleteMessage(msg.id, anon.id, isOwner)) {
+        io.to(msg.room).emit("message:deleted", { id: msg.id });
+      }
+    });
+
+    // ---------- Voice ----------
 
     const voiceUsers = new Map(); // anonId -> { id, name, micOn, deafened }
 

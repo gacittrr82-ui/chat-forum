@@ -95,9 +95,29 @@
 
         <div id="messages" class="messages"></div>
 
+        <div id="composer-extras" class="composer-extras">
+          <div id="reply-chip" class="composer-chip hidden">
+            <span>↩️ Membalas <b id="reply-name"></b>: <em id="reply-text"></em></span>
+            <button id="reply-cancel" title="Batal">✕</button>
+          </div>
+          <div id="attach-chip" class="composer-chip hidden">
+            <span id="attach-label">📎 Uploading...</span>
+            <button id="attach-cancel" title="Batal">✕</button>
+          </div>
+        </div>
+
         <form id="chat-form" class="chat-input" autocomplete="off">
-          <input type="text" id="chat-text" placeholder="Ketik ke # general..." maxlength="2000" />
-          <button type="submit" class="btn-primary">Kirim</button>
+          <div class="chat-input-row">
+            <div class="attach-wrap">
+              <button type="button" class="attach-btn" id="attach-btn" title="Upload gambar/file">📎</button>
+              <input type="file" id="file-input" hidden />
+            </div>
+            <div class="input-wrap">
+              <input type="text" id="chat-text" placeholder="Ketik ke # general..." maxlength="2000" />
+              <div id="mention-list" class="mention-list hidden"></div>
+            </div>
+            <button type="submit" class="btn-primary">Kirim</button>
+          </div>
         </form>
       </main>
 
@@ -107,6 +127,28 @@
         <ul id="member-list"></ul>
       </aside>
 
+    </div>
+  </div>
+
+  <!-- ======== Modal Custom Identitas ======== -->
+  <div id="profile-modal" class="modal hidden">
+    <div class="modal-card glow-border">
+      <h3>Custom Identitas</h3>
+      <p class="modal-sub">Ganti tampilan kamu — tetap anonim, tanpa daftar.</p>
+
+      <label class="modal-label">Nama tampilan</label>
+      <input type="text" id="pname" class="modal-input" maxlength="20" placeholder="ANONIM-..." />
+
+      <label class="modal-label">Warna avatar</label>
+      <div class="color-picker" id="pcolor"></div>
+
+      <label class="modal-label">Emoji avatar</label>
+      <div class="emoji-picker" id="pemoji"></div>
+
+      <div class="modal-actions">
+        <button class="btn-primary" id="p-save">Simpan</button>
+        <button class="btn-ghost" id="p-cancel">Batal</button>
+      </div>
     </div>
   </div>
 

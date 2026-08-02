@@ -15,8 +15,8 @@
 
   let me = null;
   let socket = null;
+  let onlineUsers = [];
 
-  // Model Discord: 1 server = kumpulan text channel + voice channel
   const SERVERS = {
     chat: {
       id: "chat",
@@ -74,19 +74,92 @@
     return String(name || "?").replace(/^ANONIM-/, "").slice(0, 2);
   }
 
-  // ---------- Pesan ----------
+  // Cache pesan per room (buat resolusi reply)
+  const msgCache = new Map();
+
+  // ---------- Render pesan ----------
+  const PALETTE = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
+
+  function highlightMentions(text) {
+    return escapeHtml(text).replace(/@([^\s@<]+)/g, '<span class="mention">@$1</span>');
+  }
+
+  function renderReactions(container, msg) {
+    container.innerHTML = "";
+    const reps = msg.reactions || {};
+    for (const emoji of Object.keys(reps)) {
+      const ids = reps[emoji] || [];
+      if (!ids.length) continue;
+      const mine = me && ids.includes(me.id);
+      const b = document.createElement("button");
+      b.className = "react-chip" + (mine ? " mine" : "");
+      b.dataset.emoji = emoji;
+      b.textContent = `${emoji} ${ids.length}`;
+      container.appendChild(b);
+    }
+  }
+
+  function replyQuote(m) {
+    if (!m.reply_to) return "";
+    const r = msgCache.get(m.reply_to);
+    const name = r ? r.username : "?";
+    const text = r ? (r.text || "📎 lampiran").slice(0, 90) : "Pesan telah dihapus";
+    return `<div class="reply-quote"><span class="rq-ico">↩️</span><b>${escapeHtml(name)}</b><span class="rq-text">${escapeHtml(text)}</span></div>`;
+  }
+
+  function attachmentHtml(a) {
+    if (!a) return "";
+    const isImg = a.type && a.type.startsWith("image/");
+    if (isImg) {
+      return `<div class="attach"><img src="${escapeHtml(a.url)}" alt="${escapeHtml(a.name)}" onclick="window.open(this.src)" /></div>`;
+    }
+    return `<div class="attach file-attach"><a href="${escapeHtml(a.url)}" target="_blank">📄 ${escapeHtml(a.name)}</a><span class="file-size">${formatSize(a.size)}</span></div>`;
+  }
+
+  function formatSize(bytes) {
+    if (!bytes) return "";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
   function msgEl(m, animate) {
-    const mine = me && m.username === me.name;
-    const color = avatarColor(m.user_id);
+    const mine = me && m.user_id === me.id;
+    const color = m.color || avatarColor(m.user_id);
+    const disp = m.avatar_emoji || avatarText(m.username);
+    const mentionMe = me && (m.mentions || []).includes(me.id);
+    const canDel = me && (mine || me.role === "owner");
+    const isOwner = m.role === "owner";
+
     const div = document.createElement("div");
-    div.className = "msg" + (mine ? " mine" : "");
+    div.className = "msg" + (mine ? " mine" : "") + (mentionMe ? " mention-me" : "");
+    div.id = "msg-" + m.id;
+    div.dataset.id = m.id;
     if (!animate) div.style.animation = "none";
+
     div.innerHTML = `
-      <div class="avatar" style="background:${color}">${escapeHtml(avatarText(m.username))}</div>
-      <div class="msg-body" style="border-left-color:${color}">
-        <div class="meta"><b style="color:${color}">${escapeHtml(m.username)}</b><span class="time">${timeLabel(m.created_at)}</span></div>
-        <div class="bubble">${escapeHtml(m.text)}</div>
+      <div class="avatar" style="background:${color}">${escapeHtml(disp)}</div>
+      <div class="msg-body">
+        ${replyQuote(m)}
+        <div class="meta">
+          <b style="color:${color}">${escapeHtml(m.username)}</b>
+          ${isOwner ? '<span class="badge-owner" title="Owner">👑</span>' : ""}
+          <span class="time">${timeLabel(m.created_at)}</span>
+        </div>
+        ${m.text ? `<div class="bubble">${highlightMentions(m.text)}</div>` : ""}
+        ${attachmentHtml(m.attachment)}
+        <div class="reactions"></div>
+      </div>
+      <div class="msg-actions">
+        <button class="mact" data-act="react" title="Reaksi">😀</button>
+        <button class="mact" data-act="reply" title="Balas">↩️</button>
+        ${canDel ? '<button class="mact del" data-act="delete" title="Hapus">🗑️</button>' : ""}
+        <div class="msg-palette hidden">
+          ${PALETTE.map((e) => `<button class="palette-btn" data-emoji="${e}">${e}</button>`).join("")}
+        </div>
       </div>`;
+
+    renderReactions(div.querySelector(".reactions"), m);
     return div;
   }
 
@@ -96,9 +169,13 @@
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!data) return;
+        msgCache.clear();
         listEl.innerHTML = "";
         $("#messages-empty").classList.toggle("hidden", data.messages.length > 0);
-        for (const m of data.messages) listEl.appendChild(msgEl(m, false));
+        for (const m of data.messages) {
+          msgCache.set(m.id, m);
+          listEl.appendChild(msgEl(m, false));
+        }
         scrollBottom(listEl);
       })
       .catch(() => {});
@@ -106,6 +183,7 @@
 
   // ---------- Presence ----------
   function renderPresence(list) {
+    onlineUsers = list;
     $("#member-count").textContent = list.length;
     $("#online-count").textContent = list.length;
     const ul = $("#member-list");
@@ -113,14 +191,16 @@
     list.sort((a, b) => a.id - b.id);
     for (const p of list) {
       const li = document.createElement("li");
-      li.innerHTML = `<span class="avatar" style="background:${avatarColor(p.id)}">${escapeHtml(avatarText(p.name))}</span><span class="member-name"></span>`;
-      li.querySelector(".member-name").textContent = p.name;
+      li.innerHTML = `
+        <span class="avatar" style="background:${p.color || avatarColor(p.id)}">${escapeHtml(p.avatar_emoji || avatarText(p.name))}</span>
+        <span class="member-name">${escapeHtml(p.name)}</span>
+        ${p.role === "owner" ? '<span class="badge-owner" title="Owner">👑</span>' : ""}`;
       if (me && p.id === me.id) li.classList.add("me");
       ul.appendChild(li);
     }
   }
 
-  // ---------- Channel list (render per server) ----------
+  // ---------- Channel list ----------
   function renderChannels() {
     const server = currentServer();
     const body = $("#channels-body");
@@ -174,6 +254,8 @@
     $$(".rail-btn").forEach((b) => b.classList.toggle("active", b.dataset.server === id));
 
     exitVoice();
+    cancelReply();
+    cancelAttach();
 
     const still = server.textChannels.find((ch) => ch.id === activeText);
     activeText = still ? still.id : server.textChannels[0].id;
@@ -200,8 +282,108 @@
     loadHistory(id);
   }
 
-  // ---------- Voice (WebRTC mesh) ----------
+  // ---------- Reply ----------
+  let replyState = null;
+  function setReply(msg) {
+    replyState = { id: msg.id, username: msg.username, text: (msg.text || "📎 lampiran").slice(0, 80) };
+    $("#reply-name").textContent = replyState.username;
+    $("#reply-text").textContent = replyState.text;
+    $("#reply-chip").classList.remove("hidden");
+    $("#chat-text").focus();
+  }
+  function cancelReply() {
+    replyState = null;
+    $("#reply-chip").classList.add("hidden");
+  }
 
+  // ---------- Upload ----------
+  let pendingUpload = null;
+  async function handleFile(file) {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      alert("File terlalu besar (maks 8MB).");
+      return;
+    }
+    const fr = new FileReader();
+    fr.onload = async () => {
+      const b64 = String(fr.result).split(",")[1] || "";
+      const chip = $("#attach-chip");
+      $("#attach-label").textContent = "📎 Uploading " + file.name + "...";
+      chip.classList.remove("hidden");
+      try {
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: file.name, type: file.type, data: b64 }),
+        });
+        const d = await res.json();
+        if (!d.url) throw new Error("upload");
+        pendingUpload = d;
+        $("#attach-label").textContent = "📎 " + d.name;
+      } catch (err) {
+        pendingUpload = null;
+        chip.classList.add("hidden");
+        alert("Upload gagal. Coba lagi.");
+      }
+    };
+    fr.readAsDataURL(file);
+  }
+  function cancelAttach() {
+    pendingUpload = null;
+    $("#attach-chip").classList.add("hidden");
+  }
+
+  // ---------- Mention picker ----------
+  function mentionCandidates() {
+    return [me, ...onlineUsers].filter((u, i, arr) => arr.findIndex((x) => x.id === u.id) === i);
+  }
+  function updateMentionPicker() {
+    const input = $("#chat-text");
+    const list = $("#mention-list");
+    const v = input.value;
+    const m = v.match(/@(\S*)$/);
+    if (!m) {
+      list.classList.add("hidden");
+      return;
+    }
+    const q = m[1].toLowerCase();
+    const cands = mentionCandidates().filter((u) => !q || u.name.toLowerCase().includes(q));
+    if (!cands.length) {
+      list.classList.add("hidden");
+      return;
+    }
+    list.innerHTML = cands
+      .map((u) => `<button class="mention-item" data-id="${u.id}">${escapeHtml(u.avatar_emoji || "")}<span>${escapeHtml(u.name)}</span></button>`)
+      .join("");
+    list.classList.remove("hidden");
+  }
+  function applyMention(id) {
+    const input = $("#chat-text");
+    const u = mentionCandidates().find((x) => x.id === id);
+    if (!u) return;
+    const v = input.value;
+    const idx = v.lastIndexOf("@");
+    if (idx === -1) return;
+    const after = v.slice(idx + 1).replace(/^\S*/, "");
+    input.value = v.slice(0, idx) + "@" + u.name + " " + after;
+    const pos = input.value.length;
+    input.setSelectionRange(pos, pos);
+    input.focus();
+    $("#mention-list").classList.add("hidden");
+  }
+  function extractMentions(text) {
+    const ids = [];
+    const map = new Map(mentionCandidates().map((u) => [u.name, u.id]));
+    const re = /@([^\s@]+)/g;
+    let m;
+    while ((m = re.exec(text))) {
+      const id = map.get(m[1]);
+      if (id && !ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }
+
+  // ---------- Voice ----------
   const peers = new Map();
   const screenVideos = new Map();
   const remoteAudios = new Set();
@@ -346,7 +528,6 @@
     }
   }
 
-  // --- UI voice ---
   function renderVoiceUsers() {
     const el = document.getElementById("voice-users");
     if (!el) return;
@@ -568,28 +749,144 @@
     updateVoiceUi();
   }
 
+  // ---------- Profil modal ----------
+  const COLORS = ["#5865f2", "#ec4899", "#22d3ee", "#f0b232", "#23a55a", "#f23f43", "#a78bfa", "#f97316", "#14b8a6", "#eab308", "#64748b", "#ef4444"];
+  const EMOJIS = ["🕶️", "🦊", "🐉", "👻", "👽", "🤖", "🦇", "😎", "👑", "🔥", "💀", "🐺"];
+  let selColor = null;
+  let selEmoji = null;
+
+  function buildProfilePicker() {
+    const cp = $("#pcolor");
+    cp.innerHTML = "";
+    for (const c of COLORS) {
+      const b = document.createElement("button");
+      b.className = "swatch" + (c === selColor ? " sel" : "");
+      b.style.background = c;
+      b.dataset.color = c;
+      cp.appendChild(b);
+    }
+    const ep = $("#pemoji");
+    ep.innerHTML = "";
+    for (const e of EMOJIS) {
+      const b = document.createElement("button");
+      b.className = "emojiset" + (e === selEmoji ? " sel" : "");
+      b.textContent = e;
+      b.dataset.emoji = e;
+      ep.appendChild(b);
+    }
+  }
+
+  function openProfile() {
+    selColor = me.color || "#5865f2";
+    selEmoji = me.avatar_emoji || "🕶️";
+    $("#pname").value = me.name === "ANONIM-666" ? "" : me.name;
+    buildProfilePicker();
+    $("#profile-modal").classList.remove("hidden");
+  }
+  function closeProfile() {
+    $("#profile-modal").classList.add("hidden");
+  }
+
   // ---------- Kirim pesan ----------
   function bindChatForm() {
     const input = $("#chat-text");
     let lastTyping = 0;
+
     input.addEventListener("input", () => {
       const now = Date.now();
       if (now - lastTyping > 2000) {
         lastTyping = now;
         socket.emit("typing:start", { room: currentRoom() });
       }
+      updateMentionPicker();
     });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") $("#mention-list").classList.add("hidden");
+    });
+
     $("#chat-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const text = input.value.trim();
-      if (!text || !socket) return;
-      socket.emit("message:send", { room: currentRoom(), text });
+      if ((!text && !pendingUpload) || !socket) return;
+      socket.emit("message:send", {
+        room: currentRoom(),
+        text,
+        reply_to: replyState ? replyState.id : null,
+        mentions: extractMentions(text),
+        attachment: pendingUpload,
+      });
       input.value = "";
+      cancelReply();
+      cancelAttach();
       input.focus();
+    });
+
+    $("#attach-btn").addEventListener("click", () => $("#file-input").click());
+    $("#file-input").addEventListener("change", (e) => handleFile(e.target.files[0]));
+    $("#attach-cancel").addEventListener("click", cancelAttach);
+    $("#reply-cancel").addEventListener("click", cancelReply);
+
+    $("#mention-list").addEventListener("click", (e) => {
+      const item = e.target.closest(".mention-item");
+      if (item) applyMention(Number(item.dataset.id));
     });
   }
 
-  // ---------- Effects (partikel, cursor glow, ripple) ----------
+  // ---------- Reaksi & aksi pesan ----------
+  function toggleReaction(msgId, emoji) {
+    const msg = msgCache.get(msgId);
+    if (!msg) return;
+    const mine = (msg.reactions && msg.reactions[emoji] || []).includes(me.id);
+    socket.emit(mine ? "reaction:remove" : "reaction:add", { messageId: msgId, emoji });
+  }
+
+  function bindMessageActions() {
+    $("#messages").addEventListener("click", (e) => {
+      const mact = e.target.closest(".mact");
+      const chip = e.target.closest(".react-chip");
+      const pbtn = e.target.closest(".palette-btn");
+
+      if (pbtn) {
+        const msgElm = e.target.closest(".msg");
+        const id = Number(msgElm && msgElm.dataset.id);
+        toggleReaction(id, pbtn.dataset.emoji);
+        const pal = msgElm && msgElm.querySelector(".msg-palette");
+        if (pal) pal.classList.add("hidden");
+        return;
+      }
+
+      if (chip) {
+        const msgElm = e.target.closest(".msg");
+        const id = Number(msgElm && msgElm.dataset.id);
+        toggleReaction(id, chip.dataset.emoji);
+        return;
+      }
+
+      if (mact) {
+        const msgElm = mact.closest(".msg");
+        const id = Number(msgElm && msgElm.dataset.id);
+        const act = mact.dataset.act;
+        if (act === "reply") {
+          const msg = msgCache.get(id);
+          if (msg) setReply(msg);
+        } else if (act === "delete") {
+          socket.emit("message:delete", { messageId: id });
+        } else if (act === "react") {
+          const pal = msgElm.querySelector(".msg-palette");
+          $$(".msg-palette").forEach((p) => p !== pal && p.classList.add("hidden"));
+          pal.classList.toggle("hidden");
+        }
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".msg-actions")) {
+        $$(".msg-palette").forEach((p) => p.classList.add("hidden"));
+      }
+    });
+  }
+
+  // ---------- Effects ----------
   function initEffects() {
     const host = $("#particles");
     for (let i = 0; i < 26; i++) {
@@ -624,7 +921,7 @@
     })();
 
     document.addEventListener("pointerdown", (e) => {
-      const el = e.target.closest("button, .voice-channel-row, .channel");
+      const el = e.target.closest("button, .voice-channel-row, .channel, .mention-item, .react-chip, .palette-btn");
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const d = Math.max(rect.width, rect.height) * 2;
@@ -637,6 +934,14 @@
   }
 
   // ---------- Init ----------
+  function applyMeToUI() {
+    const a = $("#user-avatar");
+    a.style.background = me.color || avatarColor(me.id);
+    a.textContent = me.avatar_emoji || avatarText(me.name);
+    a.classList.toggle("owner", me.role === "owner");
+    $("#user-name").textContent = me.name;
+  }
+
   async function init() {
     try {
       const res = await fetch("/api/anon", {
@@ -647,9 +952,7 @@
       const data = await res.json();
       if (!data.anon) throw new Error("anon");
       me = data.anon;
-      $("#user-avatar").style.background = avatarColor(me.id);
-      $("#user-avatar").textContent = avatarText(me.name);
-      $("#user-name").textContent = me.name;
+      applyMeToUI();
     } catch (err) {
       alert("Gagal mendapatkan identitas anonim. Coba muat ulang.");
       return;
@@ -675,21 +978,36 @@
 
     socket.on("identity", (anon) => {
       me = anon;
-      $("#user-avatar").style.background = avatarColor(anon.id);
-      $("#user-avatar").textContent = avatarText(anon.name);
-      $("#user-name").textContent = anon.name;
+      applyMeToUI();
     });
 
     socket.on("presence:update", renderPresence);
 
     socket.on("message:new", (m) => {
       if (m.room !== currentRoom()) return;
+      msgCache.set(m.id, m);
       $("#messages-empty").classList.add("hidden");
       $("#messages").appendChild(msgEl(m, true));
       scrollBottom($("#messages"));
     });
 
     socket.on("room:joined", ({ room }) => loadHistory(room));
+
+    socket.on("reaction:update", ({ id, reactions }) => {
+      const msg = msgCache.get(id);
+      if (msg) msg.reactions = reactions;
+      const cont = document.querySelector(`#msg-${id} .reactions`);
+      if (cont) renderReactions(cont, msg || { reactions });
+    });
+
+    socket.on("message:deleted", ({ id }) => {
+      const el = document.getElementById("msg-" + id);
+      if (el) {
+        el.classList.add("deleting");
+        setTimeout(() => el.remove(), 300);
+      }
+      msgCache.delete(id);
+    });
 
     // Typing indicator
     let typingHideTimer = null;
@@ -756,7 +1074,32 @@
     $("#deafen-btn").addEventListener("click", toggleDeafen);
     $("#screen-btn").addEventListener("click", toggleScreen);
 
+    // Profil modal
+    $("#user-avatar").addEventListener("click", openProfile);
+    $("#p-cancel").addEventListener("click", closeProfile);
+    $("#p-save").addEventListener("click", () => {
+      socket.emit("profile:update", {
+        name: $("#pname").value,
+        color: selColor,
+        avatar_emoji: selEmoji,
+      });
+      closeProfile();
+    });
+    $("#pcolor").addEventListener("click", (e) => {
+      const s = e.target.closest(".swatch");
+      if (!s) return;
+      selColor = s.dataset.color;
+      buildProfilePicker();
+    });
+    $("#pemoji").addEventListener("click", (e) => {
+      const s = e.target.closest(".emojiset");
+      if (!s) return;
+      selEmoji = s.dataset.emoji;
+      buildProfilePicker();
+    });
+
     bindChatForm();
+    bindMessageActions();
     initEffects();
     setServer("chat");
 

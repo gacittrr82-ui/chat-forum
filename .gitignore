@@ -4,6 +4,7 @@ data.sqlite-journal
 data.sqlite-wal
 data.sqlite-shm
 data.json
+public/uploads/
 .env
 *.log
 .DS_Store
